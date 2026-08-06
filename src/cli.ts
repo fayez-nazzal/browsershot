@@ -1,17 +1,25 @@
 #!/usr/bin/env bun
 
 import { parseArgs } from "node:util";
-import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { createHash } from "node:crypto";
 import { capture, captureGif, login, parseHtmlClassFlag, type HtmlClassChange, type WaitUntil } from "./capture.ts";
 import { drawAnnotations, parseBoxFlag, parseMarkerFlag, type BoxAnnotation, type MarkerAnnotation } from "./annotate.ts";
 import { publish, labelFromPath, DEFAULT_EMBED_WIDTH } from "./publish.ts";
+import { buildEvidenceHtml, readEvidenceSpec } from "./evidence.ts";
+import { parseActions, type Action } from "./act.ts";
+import type { InspectOptions } from "./inspect.ts";
+import { buildCardHtml, buildSide, parsePair, DEFAULT_LABELS } from "./card.ts";
 
 export const VERSION = "0.4.0";
 
 const WAIT_EVENTS = ["load", "domcontentloaded", "networkidle", "commit"] as const;
+
+export const COMPARE_WIDTH = 2000;
+export const COMPARE_HEIGHT = 1200;
+export const EVIDENCE_WIDTH = 1100;
 
 export const PRESETS: Record<string, { width: number; height: number }> = {};
 PRESETS.desktop = { width: 1920, height: 1080 };
@@ -43,6 +51,15 @@ OPTIONS
       --wait <event>    ${WAIT_EVENTS.join(" | ")} (default: load)
       --delay <ms>      Extra wait after load before capture (default: 0)
       --timeout <ms>    Navigation timeout (default: 30000)
+      --act <steps>     Drive the page before capturing, so states that only exist
+                        after an interaction can be shot: an open menu, a focused
+                        control, a selected row. Steps are separated by ; and each
+                        is kind:value, where kind is focus, click, press, type or
+                        wait (milliseconds). Selectors are CSS. Example:
+                        --act 'focus:button[aria-label="More actions"];press:Enter'
+                        Runs after the page has rendered and after --html-class,
+                        and before --inspect, so --inspect :focus reports where the
+                        keyboard actually landed. With --gif the steps are recorded.
       --html-class <list>  Add classes to <html> before capture; prefix a token
                         with - to remove it first (e.g. --html-class=-light,dark
                         forces a class-based dark theme; both the = form and the
@@ -55,6 +72,34 @@ OPTIONS
                         batch captures can spot duplicate outputs without
                         opening the images.
       --gif <seconds>   Record the page for that long, write a .gif next to the normal output path
+      --inspect <selector>  Highlight the first match and draw a DevTools style panel
+                        over the shot: its outerHTML on the left, its computed
+                        role, name and ARIA state on the right. Long class and
+                        style values are shortened so the markup stays readable.
+      --inspect-attr <name>  Emphasise this attribute in the panel and report it
+                        first in the JSON, e.g. --inspect-attr aria-expanded
+      --inspect-json <path>  Write the recorded element data (role, name, every
+                        attribute, outerHTML, box) as JSON. Defaults to the
+                        output path with a .json extension. Read this instead of
+                        the PNG to assert on state without opening an image.
+      --inspect-note <text>  Extra line printed at the bottom of the panel
+      --compare <before.png,after.png>  Build a two column before and after card
+                        from two PNGs and capture it. Needs no <url>. When a
+                        sidecar .json sits next to a PNG (as --inspect-json
+                        writes), its role, name and state table is shown under
+                        that side. Implies --full-page.
+      --compare-labels <a,b>   Column labels (default: ${DEFAULT_LABELS.before},${DEFAULT_LABELS.after})
+      --compare-title <text>   Card heading
+      --compare-chips <a,b,..> Small pills under the heading, comma separated
+      --evidence <spec.json>  Build a before and after page from DATA and capture it.
+                        Needs no <url>. Use this when the evidence is text rather
+                        than two screenshots: what went in, what came back before,
+                        what came back after, each with a plain-English reading, so
+                        a reviewer never has to read a terminal dump. Implies
+                        --full-page. The file holds: title, optional step and lede,
+                        an input block (heading, meta pairs, text, chips, hidden),
+                        before and after blocks (label, note, output, badge, plain,
+                        outcome) and an optional result line.
       --box <x,y,w,h[,color]>  Draw a rectangle outline on the PNG at those pixel
                         coordinates (top-left origin, post-scale); repeatable
       --marker <x,y[,color]>   Draw a point marker (filled dot) on the PNG at
@@ -91,8 +136,18 @@ function parse() {
       delay: { type: "string" },
       timeout: { type: "string" },
       "html-class": { type: "string" },
+      act: { type: "string" },
       "allow-blank": { type: "boolean", default: false },
       gif: { type: "string" },
+      inspect: { type: "string" },
+      "inspect-attr": { type: "string" },
+      "inspect-json": { type: "string" },
+      "inspect-note": { type: "string" },
+      compare: { type: "string" },
+      evidence: { type: "string" },
+      "compare-labels": { type: "string" },
+      "compare-title": { type: "string" },
+      "compare-chips": { type: "string" },
       box: { type: "string", multiple: true, default: [] },
       marker: { type: "string", multiple: true, default: [] },
       annotate: { type: "boolean", default: false },
@@ -169,6 +224,30 @@ export function gifOutputPath(pngPath: string): string {
   return result;
 }
 
+export function inspectJsonPath(pngPath: string): string {
+  let result = `${pngPath}.json`;
+  if (pngPath.toLowerCase().endsWith(".png")) {
+    result = `${pngPath.slice(0, -4)}.json`;
+  }
+  return result;
+}
+
+export function inspectSummary(record: { role: string; name: string; attributes: Record<string, string> }, attr?: string): string {
+  let name = record.name;
+  if (name === "") {
+    name = "(empty)";
+  }
+  let summary = `role=${record.role} name="${name}"`;
+  if (attr != null) {
+    let value = record.attributes[attr];
+    if (value === undefined) {
+      value = "(not present)";
+    }
+    summary = `${summary} ${attr}=${value}`;
+  }
+  return summary;
+}
+
 export function cleanshotAnnotateUrl(filePath: string): string {
   return `cleanshot://open-annotate?filepath=${encodeURIComponent(filePath)}`;
 }
@@ -223,13 +302,77 @@ async function main() {
   } else if (values.version) {
     process.stdout.write(`${VERSION}\n`);
   } else {
-    if (positionals.length === 0) {
+    const comparing = values.compare != null;
+    const showingEvidence = values.evidence != null;
+    const buildsItsOwnPage = comparing || showingEvidence;
+    if (positionals.length === 0 && !buildsItsOwnPage) {
       fail("missing <url> (try: browsershot --help)");
+    }
+    if (positionals.length > 0 && buildsItsOwnPage) {
+      fail("--compare and --evidence build their own page, so they take no <url>");
+    }
+    if (comparing && showingEvidence) {
+      fail("--compare and --evidence are two ways to build the same page; pick one");
+    }
+    if (showingEvidence && (values.gif != null || values.inspect != null)) {
+      fail("--evidence cannot be combined with --gif or --inspect");
     }
     if (positionals.length > 1) {
       fail(`unexpected extra arguments: ${positionals.slice(1).join(" ")}`);
     }
-    const url = normalizeUrl(positionals[0]!);
+    if (comparing && (values.gif != null || values.inspect != null)) {
+      fail("--compare cannot be combined with --gif or --inspect");
+    }
+    if (values.inspect != null && values.gif != null) {
+      fail("--inspect works with PNG output only, not --gif");
+    }
+
+    let cardPath = "";
+    if (comparing) {
+      try {
+        const pair = parsePair(values.compare as string, "compare");
+        let labels = DEFAULT_LABELS;
+        if (values["compare-labels"] != null) {
+          labels = parsePair(values["compare-labels"], "compare-labels");
+        }
+        let title = "before and after";
+        if (values["compare-title"] != null) {
+          title = values["compare-title"];
+        }
+        let chips: string[] = [];
+        if (values["compare-chips"] != null) {
+          chips = values["compare-chips"].split(",").map((chip) => chip.trim()).filter((chip) => chip !== "");
+        }
+        const attr = values["inspect-attr"];
+        const html = buildCardHtml({
+          title,
+          chips,
+          before: buildSide(pair.before, labels.before, attr),
+          after: buildSide(pair.after, labels.after, attr),
+        });
+        cardPath = join(mkdtempSync(join(tmpdir(), "browsershot-card-")), "card.html");
+        writeFileSync(cardPath, html);
+      } catch (e) {
+        fail((e as Error).message);
+      }
+    }
+
+    if (showingEvidence) {
+      try {
+        const html = buildEvidenceHtml(readEvidenceSpec(values.evidence as string));
+        cardPath = join(mkdtempSync(join(tmpdir(), "browsershot-evidence-")), "evidence.html");
+        writeFileSync(cardPath, html);
+      } catch (e) {
+        fail((e as Error).message);
+      }
+    }
+
+    let url = "";
+    if (buildsItsOwnPage) {
+      url = `file://${cardPath}`;
+    } else {
+      url = normalizeUrl(positionals[0]!);
+    }
 
     if (values.stdout && (values.gif != null || values.annotate || values.copy)) {
       fail("--stdout cannot be combined with --gif, --annotate, or --copy");
@@ -268,6 +411,14 @@ async function main() {
 
     let width = 1440;
     let height = 900;
+    if (comparing) {
+      width = COMPARE_WIDTH;
+      height = COMPARE_HEIGHT;
+    }
+    if (showingEvidence) {
+      width = EVIDENCE_WIDTH;
+      height = COMPARE_HEIGHT;
+    }
     if (values.preset != null) {
       const preset = PRESETS[values.preset];
       if (preset == null) {
@@ -333,11 +484,33 @@ async function main() {
       fail((e as Error).message);
     }
 
-    const fullPage = Boolean(values["full-page"]);
+    let fullPage = Boolean(values["full-page"]);
+    if (buildsItsOwnPage) {
+      fullPage = true;
+    }
     const headless = !values.headed;
     const userDataDir = values["user-data-dir"];
     const allowBlank = Boolean(values["allow-blank"]);
-    const options = { url, width, height, fullPage, headless, scale, waitUntil, delayMs, timeoutMs, userDataDir, htmlClass, allowBlank };
+
+    let inspect: InspectOptions | undefined;
+    if (values.inspect != null) {
+      if (values.inspect.trim() === "") {
+        fail("--inspect needs a CSS selector");
+      }
+      inspect = { selector: values.inspect, attr: values["inspect-attr"], timeoutMs };
+    }
+    const inspectFooter = values["inspect-note"];
+
+    let actions: Action[] | undefined;
+    try {
+      if (values.act != null) {
+        actions = parseActions(values.act);
+      }
+    } catch (e) {
+      fail((e as Error).message);
+    }
+
+    const options = { url, width, height, fullPage, headless, scale, waitUntil, delayMs, timeoutMs, userDataDir, htmlClass, allowBlank, inspect, inspectFooter, actions };
 
     let out = defaultOutput();
     if (values.output != null) {
@@ -386,8 +559,11 @@ async function main() {
       }
     } else {
       let png: Uint8Array = new Uint8Array();
+      let inspected = null;
       try {
-        png = await capture(options);
+        const result = await capture(options);
+        png = result.png;
+        inspected = result.inspected;
       } catch (e) {
         fail((e as Error).message);
       }
@@ -413,6 +589,20 @@ async function main() {
         }
         process.stderr.write(`browsershot: wrote ${out} (${png.length} bytes)\n`);
         process.stderr.write(`browsershot: sha256 ${sha256Hex(png)}\n`);
+        if (inspected != null) {
+          let jsonOut = inspectJsonPath(out);
+          if (values["inspect-json"] != null) {
+            jsonOut = values["inspect-json"];
+          }
+          try {
+            mkdirSync(dirname(jsonOut), { recursive: true });
+            writeFileSync(jsonOut, `${JSON.stringify(inspected, null, 2)}\n`);
+          } catch (e) {
+            fail(`wrote ${out}, but could not write ${jsonOut}: ${(e as Error).message}`);
+          }
+          process.stderr.write(`browsershot: inspected ${inspectSummary(inspected, values["inspect-attr"])}\n`);
+          process.stderr.write(`browsershot: element json ${jsonOut}\n`);
+        }
         if (values.publish != null) {
           let pngLabel = labelFromPath(out);
           if (values["publish-label"] != null) {

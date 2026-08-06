@@ -1,5 +1,7 @@
 import { chromium } from "playwright";
 import type { Browser, BrowserContext, Page } from "playwright";
+import { runActions, type Action } from "./act.ts";
+import { inspectElement, type ElementRecord, type InspectOptions } from "./inspect.ts";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
@@ -19,6 +21,14 @@ export interface CaptureOptions {
   userDataDir?: string;
   htmlClass?: HtmlClassChange;
   allowBlank: boolean;
+  inspect?: InspectOptions;
+  inspectFooter?: string;
+  actions?: Action[];
+}
+
+export interface CaptureResult {
+  png: Uint8Array;
+  inspected: ElementRecord | null;
 }
 
 export interface HtmlClassChange {
@@ -203,17 +213,28 @@ async function preparePage(page: Page, o: CaptureOptions): Promise<void> {
   }
 }
 
-export async function capture(o: CaptureOptions): Promise<Uint8Array> {
+async function playActions(page: Page, o: CaptureOptions): Promise<void> {
+  if (o.actions != null) {
+    await runActions(page, o.actions, o.timeoutMs);
+  }
+}
+
+export async function capture(o: CaptureOptions): Promise<CaptureResult> {
   const session = await openSession(o);
   let png: Uint8Array;
+  let inspected: ElementRecord | null = null;
   try {
     const page = await session.context.newPage();
     await preparePage(page, o);
+    await playActions(page, o);
+    if (o.inspect != null) {
+      inspected = await inspectElement(page, o.inspect, o.inspectFooter);
+    }
     png = await page.screenshot({ fullPage: o.fullPage });
   } finally {
     await closeSession(session);
   }
-  return png;
+  return { png, inspected };
 }
 
 export async function captureGif(o: CaptureOptions, durationMs: number, gifPath: string): Promise<void> {
@@ -224,6 +245,7 @@ export async function captureGif(o: CaptureOptions, durationMs: number, gifPath:
   try {
     const page = await session.context.newPage();
     await preparePage(page, o);
+    await playActions(page, o);
     await page.waitForTimeout(durationMs);
     const video = page.video();
     await closeSession(session);
