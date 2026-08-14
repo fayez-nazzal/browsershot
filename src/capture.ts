@@ -6,6 +6,7 @@ import { inspectElement, type ElementRecord, type InspectOptions } from "./inspe
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { withScope } from "./session.ts";
 
 export type WaitUntil = "load" | "domcontentloaded" | "networkidle" | "commit";
 
@@ -200,32 +201,47 @@ export async function capture(o: CaptureOptions): Promise<CaptureResult> {
   return { png, inspected };
 }
 
-export async function captureGif(o: CaptureOptions, durationMs: number, gifPath: string): Promise<void> {
-  const videoDir = mkdtempSync(join(tmpdir(), "browsershot-video-"));
-  const size = { width: o.width, height: o.height };
-  const session = await openSession(o, { recordVideo: { dir: videoDir, size } });
-  let videoPath = "";
-  try {
+export interface CaptureGifDeps {
+  openSession: typeof openSession;
+  closeSession: typeof closeSession;
+  preparePage: typeof preparePage;
+  playActions: typeof playActions;
+  mkdtemp: () => string;
+  rmDir: (path: string) => void;
+}
+
+const defaultCaptureGifDeps: CaptureGifDeps = {
+  openSession,
+  closeSession,
+  preparePage,
+  playActions,
+  mkdtemp: () => mkdtempSync(join(tmpdir(), "browsershot-video-")),
+  rmDir: (path) => rmSync(path, { recursive: true, force: true }),
+};
+
+export async function captureGif(
+  o: CaptureOptions,
+  durationMs: number,
+  gifPath: string,
+  deps: CaptureGifDeps = defaultCaptureGifDeps,
+): Promise<void> {
+  const videoDir = deps.mkdtemp();
+  await withScope(async (scope) => {
+    scope.use({ close: () => deps.rmDir(videoDir) });
+    const size = { width: o.width, height: o.height };
+    const session = await deps.openSession(o, { recordVideo: { dir: videoDir, size } });
+    scope.use({ close: () => deps.closeSession(session) });
     const page = await session.context.newPage();
-    await preparePage(page, o);
-    await playActions(page, o);
+    await deps.preparePage(page, o);
+    await deps.playActions(page, o);
     await page.waitForTimeout(durationMs);
     const video = page.video();
-    await closeSession(session);
-    if (video != null) {
-      videoPath = await video.path();
-    }
-  } finally {
-    // context and browser closed inside the try above
-  }
-  try {
-    if (videoPath === "") {
+    if (video == null) {
       throw new Error("video recording produced no file");
     }
+    const videoPath = await video.path();
     convertVideoToGif(videoPath, gifPath);
-  } finally {
-    rmSync(videoDir, { recursive: true, force: true });
-  }
+  });
 }
 
 const GIF_FPS = 12;
