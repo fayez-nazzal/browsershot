@@ -1,8 +1,7 @@
 // Upload a captured file to a Google Drive rclone remote, make it public, and
 // build the PR-ready embed. Duplicated verbatim in the termshot sibling, like
-// annotate.ts, cleanshotAnnotateUrl, and clipboardScript. Operates on the file
-// path and URLs only and never reads the image bytes: rclone moves the file by
-// path, curl checks a URL header.
+// annotate.ts. Operates on the file path and URLs only and never reads the
+// image bytes: rclone moves the file by path, curl checks a URL header.
 
 export const DEFAULT_EMBED_WIDTH = 2560;
 

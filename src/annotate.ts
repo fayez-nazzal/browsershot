@@ -1,6 +1,5 @@
 // Draw box and marker annotations onto PNG bytes via macOS Cocoa/CoreGraphics
-// through JXA (osascript), no extra dependencies. Duplicated verbatim in the
-// browsershot sibling, like cleanshotAnnotateUrl and clipboardScript.
+// through JXA (osascript), no extra dependencies.
 
 import { tmpdir } from "node:os";
 import { join } from "node:path";

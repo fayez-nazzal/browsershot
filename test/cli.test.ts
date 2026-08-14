@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { timestamp, normalizeUrl, parseSize, defaultOutput, PRESETS, gifOutputPath, cleanshotAnnotateUrl, clipboardScript, sha256Hex, normalizeArgv } from "../src/cli.ts";
+import { timestamp, normalizeUrl, parseSize, defaultOutput, PRESETS, gifOutputPath, sha256Hex, normalizeArgv } from "../src/cli.ts";
 
 test("timestamp matches YYYYMMDD-HHMMSS", () => {
   expect(timestamp()).toMatch(/^\d{8}-\d{6}$/);
@@ -50,16 +50,6 @@ test("gifOutputPath swaps a .png extension for .gif", () => {
 test("gifOutputPath appends .gif when there is no .png extension", () => {
   expect(gifOutputPath("/a/b/shot")).toBe("/a/b/shot.gif");
   expect(gifOutputPath("/a/b/shot.jpeg")).toBe("/a/b/shot.jpeg.gif");
-});
-
-test("cleanshotAnnotateUrl URL-encodes the file path", () => {
-  const url = cleanshotAnnotateUrl("/tmp/my shot.png");
-  expect(url).toBe("cleanshot://open-annotate?filepath=%2Ftmp%2Fmy%20shot.png");
-});
-
-test("clipboardScript embeds the path and escapes quotes", () => {
-  expect(clipboardScript("/tmp/shot.png")).toBe('set the clipboard to (read (POSIX file "/tmp/shot.png") as «class PNGf»)');
-  expect(clipboardScript('/tmp/a"b.png')).toContain('POSIX file "/tmp/a\\"b.png"');
 });
 
 test("sha256Hex hashes bytes to lowercase hex", () => {

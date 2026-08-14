@@ -123,8 +123,6 @@ OPTIONS
                         coordinates (top-left origin, post-scale); repeatable
       --marker <x,y[,color]>   Draw a point marker (filled dot) on the PNG at
                         that pixel coordinate; repeatable
-      --annotate        Open the written file in CleanShot for annotation
-      --copy            Put the written PNG on the macOS clipboard
       --stdout          Write PNG bytes to stdout instead of a file
       --publish <dest>  Upload the written file to an rclone remote dir (e.g.
                         gdrive:PR-Shots/<repo>/<branch>/), make it public, and
@@ -169,8 +167,6 @@ function parse() {
       "compare-chips": { type: "string" },
       box: { type: "string", multiple: true, default: [] },
       marker: { type: "string", multiple: true, default: [] },
-      annotate: { type: "boolean", default: false },
-      copy: { type: "boolean", default: false },
       stdout: { type: "boolean", default: false },
       publish: { type: "string" },
       "publish-size": { type: "string" },
@@ -265,33 +261,6 @@ export function inspectSummary(record: { role: string; name: string; attributes:
     summary = `${summary} ${attr}=${value}`;
   }
   return summary;
-}
-
-export function cleanshotAnnotateUrl(filePath: string): string {
-  return `cleanshot://open-annotate?filepath=${encodeURIComponent(filePath)}`;
-}
-
-export function clipboardScript(filePath: string): string {
-  const escaped = filePath.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-  return `set the clipboard to (read (POSIX file "${escaped}") as «class PNGf»)`;
-}
-
-function openInCleanshot(filePath: string): void {
-  const proc = Bun.spawnSync(["open", "-g", cleanshotAnnotateUrl(filePath)]);
-  if (!proc.success) {
-    const err = new TextDecoder().decode(proc.stderr).trim();
-    const detail = err || `exit ${proc.exitCode}`;
-    throw new Error(`could not open CleanShot annotate: ${detail}`);
-  }
-}
-
-function copyPngToClipboard(filePath: string): void {
-  const proc = Bun.spawnSync(["osascript", "-e", clipboardScript(filePath)]);
-  if (!proc.success) {
-    const err = new TextDecoder().decode(proc.stderr).trim();
-    const detail = err || `exit ${proc.exitCode}`;
-    throw new Error(`could not copy PNG to clipboard: ${detail}`);
-  }
 }
 
 function intFlag(name: string, raw: string): number {
@@ -393,8 +362,8 @@ async function main() {
       url = normalizeUrl(positionals[0]!);
     }
 
-    if (values.stdout && (values.gif != null || values.annotate || values.copy)) {
-      fail("--stdout cannot be combined with --gif, --annotate, or --copy");
+    if (values.stdout && values.gif != null) {
+      fail("--stdout cannot be combined with --gif");
     }
     if (values.publish != null && values.stdout) {
       fail("--publish needs a written file; it cannot be combined with --stdout");
@@ -407,9 +376,6 @@ async function main() {
       }
     } catch (e) {
       fail((e as Error).message);
-    }
-    if (values.gif != null && (values.annotate || values.copy)) {
-      fail("--annotate and --copy work with PNG output only, not --gif");
     }
     if (values.gif != null && (values.box.length > 0 || values.marker.length > 0)) {
       fail("--box and --marker work with PNG output only, not --gif");
@@ -598,16 +564,6 @@ async function main() {
       } else {
         mkdirSync(dirname(out), { recursive: true });
         writeFileSync(out, png);
-        try {
-          if (values.annotate) {
-            openInCleanshot(out);
-          }
-          if (values.copy) {
-            copyPngToClipboard(out);
-          }
-        } catch (e) {
-          fail(`wrote ${out}, but ${(e as Error).message}`);
-        }
         process.stderr.write(`browsershot: wrote ${out} (${png.length} bytes)\n`);
         process.stderr.write(`browsershot: sha256 ${sha256Hex(png)}\n`);
         if (inspected != null) {
