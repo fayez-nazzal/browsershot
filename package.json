@@ -4,13 +4,16 @@
   "description": "Capture a web page to a PNG or GIF via your installed Chrome (Playwright).",
   "type": "module",
   "bin": {
-    "browsershot": "src/cli.ts"
+    "browsershot": "dist/browsershot"
   },
   "files": [
-    "src"
+    "src",
+    "dist"
   ],
   "scripts": {
     "start": "bun run src/cli.ts",
+    "build": "bun build --compile src/cli.ts --external chromium-bidi --outfile dist/browsershot",
+    "prepublishOnly": "bun run build",
     "test": "bun test"
   },
   "dependencies": {

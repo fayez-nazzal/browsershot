@@ -19,7 +19,7 @@ It is built for producing review evidence. You point it at a URL, optionally dri
 
 - [Bun](https://bun.sh) to run the CLI.
 - Google Chrome installed. Playwright uses the `chrome` channel first and falls back to bundled Chromium.
-- macOS only for `--annotate`, `--copy`, `--box`, `--marker` and GIF assembly.
+- macOS only for GIF assembly. `--box` and `--marker` work everywhere.
 - [`rclone`](https://rclone.org) only if you use `--publish`.
 
 ## Install
@@ -27,8 +27,11 @@ It is built for producing review evidence. You point it at a URL, optionally dri
 ```sh
 bun install
 bun playwright install chromium
+bun run build
 bun link
 ```
+
+`bin` points at `dist/browsershot`, which is build output and is not committed. A fresh clone must run `bun run build` before `bun link`.
 
 `bun link` puts a global `browsershot` command in `~/.bun/bin`. Make sure that directory is on `PATH`:
 
@@ -86,6 +89,40 @@ browsershot: element json shot.json
 ```
 
 That line is the point. You can assert on `role`, `name` and state without ever opening the image.
+
+## Output
+
+Every successful run prints the absolute output path as the first line on stdout. Human readable notes go to stderr, so a caller never has to parse stderr to find the file.
+
+Pass `--json` to get one JSON object on stdout instead:
+
+```json
+{
+  "outputPath": "/Users/you/browsershot/20260815-101500.png",
+  "bytes": 38835,
+  "sha256": "a1b2c3...",
+  "gifPath": null,
+  "inspectJsonPath": "/Users/you/browsershot/20260815-101500.json",
+  "inspected": {
+    "selector": "#t",
+    "tagName": "button",
+    "role": "button (implicit)",
+    "name": "Menu",
+    "description": "",
+    "attributes": { "id": "t", "aria-expanded": "false" },
+    "outerHTML": "<button id=\"t\" aria-expanded=\"false\">Menu</button>",
+    "box": { "x": 8, "y": 100.4, "width": 49.4, "height": 21 }
+  },
+  "publishedUrl": null
+}
+```
+
+- `gifPath` is set only with `--gif`.
+- `inspectJsonPath` and `inspected` are set only with `--inspect`.
+- `publishedUrl` is set only with `--publish`.
+- Fields that do not apply to the run are `null`.
+
+`--json` cannot be combined with `--stdout`, because both want stdout. That combination exits `2`.
 
 Run `browsershot --help` for the full flag list.
 

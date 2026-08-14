@@ -3,7 +3,7 @@
 import { parseArgs } from "node:util";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { capture, captureGif, parseHtmlClassFlag, type HtmlClassChange, type WaitUntil } from "./capture.ts";
 import { drawAnnotations, parseBoxFlag, parseMarkerFlag, type BoxAnnotation, type MarkerAnnotation } from "./annotate.ts";
@@ -137,6 +137,10 @@ OPTIONS
                         archive link + drag-in instruction for a --gif
       --publish-size <px>   Long-edge width for the PNG embed (default: ${DEFAULT_EMBED_WIDTH})
       --publish-label <text>  Alt text for the PNG embed (default: file name)
+      --json            Print one JSON object on stdout carrying outputPath, bytes,
+                        sha256, gifPath, inspectJsonPath, inspected and publishedUrl.
+                        Human readable lines stay on stderr. Without it the absolute
+                        output path is the first stdout line.
   -h, --help            Show this help
   -v, --version         Show version
 `;
@@ -176,6 +180,7 @@ function parse() {
       box: { type: "string", multiple: true, default: [] },
       marker: { type: "string", multiple: true, default: [] },
       stdout: { type: "boolean", default: false },
+      json: { type: "boolean", default: false },
       publish: { type: "string" },
       "publish-size": { type: "string" },
       "publish-label": { type: "string" },
@@ -198,6 +203,28 @@ export function defaultOutput(): string {
 
 export function sha256Hex(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
+}
+
+export interface SuccessSummary {
+  outputPath: string | null;
+  bytes: number | null;
+  sha256: string | null;
+  gifPath: string | null;
+  inspectJsonPath: string | null;
+  inspected: unknown;
+  publishedUrl: string | null;
+}
+
+export function emptySuccess(): SuccessSummary {
+  return {
+    outputPath: null,
+    bytes: null,
+    sha256: null,
+    gifPath: null,
+    inspectJsonPath: null,
+    inspected: null,
+    publishedUrl: null,
+  };
 }
 
 export function normalizeUrl(url: string): string {
@@ -373,6 +400,9 @@ async function main() {
     if (values.stdout && values.gif != null) {
       fail("--stdout cannot be combined with --gif");
     }
+    if (values.json && values.stdout) {
+      fail("--json prints one JSON object on stdout; it cannot be combined with --stdout");
+    }
     if (values.publish != null && values.stdout) {
       fail("--publish needs a written file; it cannot be combined with --stdout");
     }
@@ -523,6 +553,9 @@ async function main() {
     if (values.output != null) {
       out = values.output;
     }
+    out = resolve(out);
+
+    const success = emptySuccess();
 
     if (values.gif != null) {
       let gifSeconds = 0;
@@ -539,8 +572,15 @@ async function main() {
         fail((e as Error).message, EXIT_FAILED);
       }
       const bytes = statSync(gifOut).size;
+      success.outputPath = gifOut;
+      success.gifPath = gifOut;
+      success.bytes = bytes;
+      success.sha256 = sha256Hex(readFileSync(gifOut));
       process.stderr.write(`browsershot: wrote ${gifOut} (${bytes} bytes)\n`);
-      process.stderr.write(`browsershot: sha256 ${sha256Hex(readFileSync(gifOut))}\n`);
+      process.stderr.write(`browsershot: sha256 ${success.sha256}\n`);
+      if (!values.json) {
+        process.stdout.write(`${gifOut}\n`);
+      }
       if (values.publish != null) {
         let gifLabel = labelFromPath(gifOut);
         if (values["publish-label"] != null) {
@@ -548,12 +588,17 @@ async function main() {
         }
         try {
           const published = publish({ filePath: gifOut, dest: values.publish, isGif: true, size: publishSize, label: gifLabel });
-          process.stdout.write(`${gifOut}\n`);
-          process.stdout.write(`${published.markdown}\n`);
+          success.publishedUrl = published.url;
+          if (!values.json) {
+            process.stdout.write(`${published.markdown}\n`);
+          }
         } catch (e) {
           const failure = publishFailure(gifOut, e as Error);
           fail(failure.message, failure.code);
         }
+      }
+      if (values.json) {
+        process.stdout.write(`${JSON.stringify(success)}\n`);
       }
     } else {
       let png: Uint8Array = new Uint8Array();
@@ -575,8 +620,14 @@ async function main() {
       } else {
         mkdirSync(dirname(out), { recursive: true });
         writeFileSync(out, png);
+        success.outputPath = out;
+        success.bytes = png.length;
+        success.sha256 = sha256Hex(png);
         process.stderr.write(`browsershot: wrote ${out} (${png.length} bytes)\n`);
-        process.stderr.write(`browsershot: sha256 ${sha256Hex(png)}\n`);
+        process.stderr.write(`browsershot: sha256 ${success.sha256}\n`);
+        if (!values.json) {
+          process.stdout.write(`${out}\n`);
+        }
         if (inspected != null) {
           let jsonOut = inspectJsonPath(out);
           if (values["inspect-json"] != null) {
@@ -588,6 +639,8 @@ async function main() {
           } catch (e) {
             fail(`wrote ${out}, but could not write ${jsonOut}: ${(e as Error).message}`, EXIT_WRITE_ERROR);
           }
+          success.inspectJsonPath = jsonOut;
+          success.inspected = inspected;
           process.stderr.write(`browsershot: inspected ${inspectSummary(inspected, values["inspect-attr"])}\n`);
           process.stderr.write(`browsershot: element json ${jsonOut}\n`);
         }
@@ -598,11 +651,17 @@ async function main() {
           }
           try {
             const published = publish({ filePath: out, dest: values.publish, isGif: false, size: publishSize, label: pngLabel });
-            process.stdout.write(`${published.markdown}\n`);
+            success.publishedUrl = published.url;
+            if (!values.json) {
+              process.stdout.write(`${published.markdown}\n`);
+            }
           } catch (e) {
             const failure = publishFailure(out, e as Error);
             fail(failure.message, failure.code);
           }
+        }
+        if (values.json) {
+          process.stdout.write(`${JSON.stringify(success)}\n`);
         }
       }
     }
