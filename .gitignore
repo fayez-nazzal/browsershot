@@ -1,2 +1,21 @@
 node_modules/
 .worktrees/
+.superpowers/
+.claude/
+dist/
+build/
+*.tsbuildinfo
+.cache/
+.DS_Store
+
+# captures and their sidecars
+*.png
+*.gif
+*.webm
+*.json.tmp
+
+# local config and credentials, never commit
+.env
+.env.*
+.testing-credentials.yaml
+.browsershot-profiles/

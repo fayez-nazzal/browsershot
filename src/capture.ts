@@ -1,6 +1,7 @@
 import { chromium } from "playwright";
 import type { Browser, BrowserContext, Page } from "playwright";
 import { runActions, type Action } from "./act.ts";
+import { applyMocks, type Mock } from "./mock.ts";
 import { inspectElement, type ElementRecord, type InspectOptions } from "./inspect.ts";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,12 +19,13 @@ export interface CaptureOptions {
   waitUntil: WaitUntil;
   delayMs: number;
   timeoutMs: number;
-  userDataDir?: string;
+  cookiesPath?: string;
   htmlClass?: HtmlClassChange;
   allowBlank: boolean;
   inspect?: InspectOptions;
   inspectFooter?: string;
   actions?: Action[];
+  mocks?: Mock[];
 }
 
 export interface CaptureResult {
@@ -53,6 +55,16 @@ export function renderLooksBlank(stats: RenderStats): boolean {
     result = true;
   }
   return result;
+}
+
+export type SessionSource = { kind: "throwaway" } | { kind: "cookies"; path: string };
+
+export function resolveSessionSource(cookiesPath?: string): SessionSource {
+  let source: SessionSource = { kind: "throwaway" };
+  if (cookiesPath != null) {
+    source = { kind: "cookies", path: cookiesPath };
+  }
+  return source;
 }
 
 export function parseHtmlClassFlag(raw: string): HtmlClassChange {
@@ -96,40 +108,17 @@ async function launch(headless: boolean): Promise<Browser> {
   return browser;
 }
 
-async function launchPersistent(o: CaptureOptions, extra: Record<string, unknown>): Promise<BrowserContext> {
-  const dir = o.userDataDir as string;
-  mkdirSync(dir, { recursive: true });
-  const base = {
-    headless: o.headless,
-    viewport: { width: o.width, height: o.height },
-    deviceScaleFactor: o.scale,
-    ...extra,
-  };
-  let context: BrowserContext;
-  try {
-    context = await chromium.launchPersistentContext(dir, { channel: "chrome", ...base });
-  } catch (e) {
-    const detail = (e as Error).message;
-    throw new Error(
-      `could not launch Google Chrome with profile ${dir}: ${detail}\n` +
-        `If another Chrome or Chromium process holds this profile, close it and retry. ` +
-        `Sessions saved by a different browser channel do not carry over, so falling back ` +
-        `to bundled Chromium is disabled for persistent profiles: it would silently lose the login.`,
-    );
-  }
-  return context;
-}
-
 async function openSession(o: CaptureOptions, extra: Record<string, unknown> = {}): Promise<Session> {
-  let session: Session;
-  if (o.userDataDir != null) {
-    const context = await launchPersistent(o, extra);
-    session = { context, browser: null };
-  } else {
-    const browser = await launch(o.headless);
-    const viewport = { width: o.width, height: o.height };
-    const context = await browser.newContext({ viewport, deviceScaleFactor: o.scale, ...extra });
-    session = { context, browser };
+  const browser = await launch(o.headless);
+  const viewport = { width: o.width, height: o.height };
+  const contextOptions: Record<string, unknown> = { viewport, deviceScaleFactor: o.scale, ...extra };
+  if (o.cookiesPath != null) {
+    contextOptions.storageState = o.cookiesPath;
+  }
+  const context = await browser.newContext(contextOptions);
+  const session: Session = { context, browser };
+  if (o.mocks != null) {
+    await applyMocks(session.context, o.mocks);
   }
   return session;
 }
@@ -139,22 +128,6 @@ async function closeSession(session: Session): Promise<void> {
   if (session.browser != null) {
     await session.browser.close();
   }
-}
-
-export async function login(o: CaptureOptions): Promise<void> {
-  if (o.userDataDir == null) {
-    throw new Error("--login requires --user-data-dir <dir>");
-  }
-  const context = await launchPersistent({ ...o, headless: false }, {});
-  const page = await context.newPage();
-  await page.goto(o.url, { waitUntil: o.waitUntil, timeout: o.timeoutMs });
-  process.stderr.write("browsershot: log in in the opened window, then press Enter here to save the session...\n");
-  await new Promise<void>((resolve) => {
-    process.stdin.once("data", () => {
-      resolve();
-    });
-  });
-  await context.close();
 }
 
 async function readRenderStats(page: Page): Promise<RenderStats> {
@@ -183,7 +156,7 @@ async function waitForRender(page: Page, o: CaptureOptions): Promise<void> {
       throw new Error(
         `page still looks blank after ${RENDER_POLL_TIMEOUT_MS / 1000}s ` +
           `(~${stats.textLength} chars of text, ${stats.elementCount} elements). ` +
-          `The app may not have rendered: check the URL, the auth session in --user-data-dir, ` +
+          `The app may not have rendered: check the URL, the jar passed to --cookies, ` +
           `or raise --delay / use --wait networkidle. Pass --allow-blank to capture anyway.`,
       );
     }

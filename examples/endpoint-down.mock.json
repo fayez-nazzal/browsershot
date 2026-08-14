@@ -1,0 +1,9 @@
+{
+  "mocks": [
+    {
+      "url": "**/api/**/quote*",
+      "json": { "error": "service unavailable" },
+      "status": 503
+    }
+  ]
+}

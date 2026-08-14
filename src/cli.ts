@@ -1,19 +1,20 @@
 #!/usr/bin/env bun
 
 import { parseArgs } from "node:util";
-import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { createHash } from "node:crypto";
-import { capture, captureGif, login, parseHtmlClassFlag, type HtmlClassChange, type WaitUntil } from "./capture.ts";
+import { capture, captureGif, parseHtmlClassFlag, type HtmlClassChange, type WaitUntil } from "./capture.ts";
 import { drawAnnotations, parseBoxFlag, parseMarkerFlag, type BoxAnnotation, type MarkerAnnotation } from "./annotate.ts";
 import { publish, labelFromPath, DEFAULT_EMBED_WIDTH } from "./publish.ts";
 import { buildEvidenceHtml, readEvidenceSpec } from "./evidence.ts";
 import { parseActions, type Action } from "./act.ts";
+import { parseMocks, type Mock } from "./mock.ts";
 import type { InspectOptions } from "./inspect.ts";
 import { buildCardHtml, buildSide, parsePair, DEFAULT_LABELS } from "./card.ts";
 
-export const VERSION = "0.4.0";
+export const VERSION = "1.0.0";
 
 const WAIT_EVENTS = ["load", "domcontentloaded", "networkidle", "commit"] as const;
 
@@ -43,10 +44,14 @@ OPTIONS
       --preset <name>   Viewport preset: desktop 1920x1080, laptop 1440x900, phone 390x844
       --full-page       Capture the whole scrollable page (default: viewport only)
       --headed          Run with a visible window (default: headless)
-      --user-data-dir <dir>  Reuse a persistent Chrome profile (keeps login/cookies
-                        across runs). Combine with --login once to sign in.
-      --login           Open a visible window at <url>, wait for you to log in and
-                        press Enter, then save the session to --user-data-dir
+      --cookies <path>  Playwright storageState jar for an authenticated capture.
+                        browsershot never logs in and never stores credentials.
+                        Produce the jar with authstate, which owns every login:
+                          jar=$(authstate ensure --credentials <yaml> --purpose <name>)
+                          browsershot <url> --cookies "$jar"
+                        A jar is a plain file, so any number of captures can read
+                        the same one at once, and captures on different accounts
+                        simply pass different jars.
       --scale <n>       deviceScaleFactor for hi-dpi (default: 2, retina)
       --wait <event>    ${WAIT_EVENTS.join(" | ")} (default: load)
       --delay <ms>      Extra wait after load before capture (default: 0)
@@ -60,6 +65,20 @@ OPTIONS
                         Runs after the page has rendered and after --html-class,
                         and before --inspect, so --inspect :focus reports where the
                         keyboard actually landed. With --gif the steps are recorded.
+      --mock <spec.json>  Intercept matching requests before the page sees them, so a
+                        flow can be driven into a state the server will not serve
+                        yet. The file holds a "mocks" array; every entry has a "url"
+                        glob plus one of:
+                          "redirect": send the browser somewhere else (302), which is
+                            how you stand in for a server side redirect that is still
+                            behind a flag
+                          "merge": fetch the real response and deep merge this JSON
+                            patch into it, e.g. flipping one feature flag on while
+                            every other field stays real
+                          "json": replace the body outright, with optional "status"
+                        Matching is by URL glob and applies to navigations too. What
+                        the page renders is then a simulation, so label any capture
+                        built this way as simulated.
       --html-class <list>  Add classes to <html> before capture; prefix a token
                         with - to remove it first (e.g. --html-class=-light,dark
                         forces a class-based dark theme; both the = form and the
@@ -129,14 +148,14 @@ function parse() {
       preset: { type: "string" },
       "full-page": { type: "boolean", default: false },
       headed: { type: "boolean", default: false },
-      "user-data-dir": { type: "string" },
-      login: { type: "boolean", default: false },
+      cookies: { type: "string" },
       scale: { type: "string" },
       wait: { type: "string" },
       delay: { type: "string" },
       timeout: { type: "string" },
       "html-class": { type: "string" },
       act: { type: "string" },
+      mock: { type: "string" },
       "allow-blank": { type: "boolean", default: false },
       gif: { type: "string" },
       inspect: { type: "string" },
@@ -489,7 +508,10 @@ async function main() {
       fullPage = true;
     }
     const headless = !values.headed;
-    const userDataDir = values["user-data-dir"];
+    const cookiesPath = values.cookies;
+    if (cookiesPath != null && !existsSync(cookiesPath)) {
+      fail(`--cookies file not found: ${cookiesPath}`);
+    }
     const allowBlank = Boolean(values["allow-blank"]);
 
     let inspect: InspectOptions | undefined;
@@ -510,24 +532,23 @@ async function main() {
       fail((e as Error).message);
     }
 
-    const options = { url, width, height, fullPage, headless, scale, waitUntil, delayMs, timeoutMs, userDataDir, htmlClass, allowBlank, inspect, inspectFooter, actions };
+    let mocks: Mock[] | undefined;
+    try {
+      if (values.mock != null) {
+        mocks = parseMocks(readFileSync(values.mock, "utf8"));
+      }
+    } catch (e) {
+      fail((e as Error).message);
+    }
+
+    const options = { url, width, height, fullPage, headless, scale, waitUntil, delayMs, timeoutMs, cookiesPath, htmlClass, allowBlank, inspect, inspectFooter, actions, mocks };
 
     let out = defaultOutput();
     if (values.output != null) {
       out = values.output;
     }
 
-    if (values.login) {
-      if (userDataDir == null) {
-        fail("--login requires --user-data-dir <dir>");
-      }
-      try {
-        await login(options);
-      } catch (e) {
-        fail((e as Error).message);
-      }
-      process.stderr.write(`browsershot: session saved to ${userDataDir}\n`);
-    } else if (values.gif != null) {
+    if (values.gif != null) {
       let gifSeconds = 0;
       try {
         gifSeconds = intFlag("gif", values.gif);

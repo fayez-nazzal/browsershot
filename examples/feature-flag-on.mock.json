@@ -1,0 +1,12 @@
+{
+  "mocks": [
+    {
+      "url": "**/subscriptions/new*",
+      "redirect": "https://app.example.com/checkout/new?plan=PRO&quantity=1"
+    },
+    {
+      "url": "**/user_info*",
+      "merge": { "feature_flags": { "new_checkout": true } }
+    }
+  ]
+}
