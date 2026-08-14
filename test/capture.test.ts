@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { renderLooksBlank, parseHtmlClassFlag, resolveSessionSource } from "../src/capture.ts";
+import { renderLooksBlank, parseHtmlClassFlag } from "../src/capture.ts";
 
 test("renderLooksBlank flags an empty SPA shell", () => {
   expect(renderLooksBlank({ textLength: 0, elementCount: 1 })).toBe(true);
@@ -32,18 +32,4 @@ test("parseHtmlClassFlag treats a leading dash as removal", () => {
 test("parseHtmlClassFlag rejects an empty value", () => {
   expect(() => parseHtmlClassFlag("")).toThrow("--html-class needs at least one class name");
   expect(() => parseHtmlClassFlag("  ,  ")).toThrow("--html-class needs at least one class name");
-});
-
-test("resolveSessionSource defaults to a throwaway profile", () => {
-  expect(resolveSessionSource(undefined)).toEqual({ kind: "throwaway" });
-});
-
-test("resolveSessionSource uses the jar it is handed", () => {
-  expect(resolveSessionSource("/jar.json")).toEqual({ kind: "cookies", path: "/jar.json" });
-});
-
-test("resolveSessionSource keeps two accounts on separate jars", () => {
-  const free = resolveSessionSource("/free.json");
-  const essential = resolveSessionSource("/essential.json");
-  expect(free).not.toEqual(essential);
 });

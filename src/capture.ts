@@ -57,16 +57,6 @@ export function renderLooksBlank(stats: RenderStats): boolean {
   return result;
 }
 
-export type SessionSource = { kind: "throwaway" } | { kind: "cookies"; path: string };
-
-export function resolveSessionSource(cookiesPath?: string): SessionSource {
-  let source: SessionSource = { kind: "throwaway" };
-  if (cookiesPath != null) {
-    source = { kind: "cookies", path: cookiesPath };
-  }
-  return source;
-}
-
 export function parseHtmlClassFlag(raw: string): HtmlClassChange {
   const tokens = raw.split(/[\s,]+/).filter((token) => token.length > 0);
   const change: HtmlClassChange = { add: [], remove: [] };
