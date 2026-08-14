@@ -201,7 +201,7 @@ export function buildEvidenceHtml(spec: EvidenceSpec): string {
     if (spec.result.tone === "warn") {
       tone = "warn";
     }
-    result = `<div class="card result ${tone}">${spec.result.text}</div>`;
+    result = `<div class="card result ${tone}">${escapeHtml(spec.result.text)}</div>`;
   }
   return (
     `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n` +

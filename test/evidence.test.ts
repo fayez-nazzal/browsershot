@@ -100,3 +100,13 @@ test("readEvidenceSpec reads a file and rejects one missing a side", () => {
   writeFileSync(bad, JSON.stringify({ title: "no sides" }));
   expect(() => readEvidenceSpec(bad)).toThrow(/needs "title", "before" and "after"/);
 });
+
+test("buildEvidenceHtml escapes an injected result.text instead of interpolating it raw", () => {
+  const hostile = spec();
+  hostile.result = { text: '<img src=x onerror=alert(1)>' };
+
+  const html = buildEvidenceHtml(hostile);
+
+  expect(html).not.toContain('<img src=x onerror=alert(1)>');
+  expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+});
