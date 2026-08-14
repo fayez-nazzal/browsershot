@@ -3,6 +3,7 @@ import type { Browser, BrowserContext, Page } from "playwright";
 import { runActions, type Action } from "./act.ts";
 import { applyMocks, type Mock } from "./mock.ts";
 import { inspectElement, type ElementRecord, type InspectOptions } from "./inspect.ts";
+import { assertLanding } from "./landing.ts";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
@@ -27,6 +28,8 @@ export interface CaptureOptions {
   inspectFooter?: string;
   actions?: Action[];
   mocks?: Mock[];
+  allowStatus?: boolean;
+  expectText?: string;
 }
 
 export interface CaptureResult {
@@ -121,6 +124,16 @@ async function closeSession(session: Session): Promise<void> {
   }
 }
 
+async function readBodyText(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    let text = "";
+    if (document.body) {
+      text = document.body.innerText;
+    }
+    return text;
+  });
+}
+
 async function readRenderStats(page: Page): Promise<RenderStats> {
   return page.evaluate(() => {
     const body = document.body;
@@ -168,13 +181,23 @@ async function applyHtmlClass(page: Page, o: CaptureOptions): Promise<void> {
   }
 }
 
-async function preparePage(page: Page, o: CaptureOptions): Promise<void> {
-  await page.goto(o.url, { waitUntil: o.waitUntil, timeout: o.timeoutMs });
+export async function preparePage(page: Page, o: CaptureOptions): Promise<void> {
+  const response = await page.goto(o.url, { waitUntil: o.waitUntil, timeout: o.timeoutMs });
   await waitForRender(page, o);
   await applyHtmlClass(page, o);
   if (o.delayMs > 0) {
     await page.waitForTimeout(o.delayMs);
   }
+  const httpStatus = response != null ? response.status() : null;
+  const finalUrl = response != null ? response.url() : page.url();
+  let bodyText = "";
+  if (o.expectText != null) {
+    bodyText = await readBodyText(page);
+  }
+  assertLanding(
+    { httpStatus, finalUrl, bodyText },
+    { allowStatus: Boolean(o.allowStatus), expectText: o.expectText },
+  );
 }
 
 async function playActions(page: Page, o: CaptureOptions): Promise<void> {

@@ -83,6 +83,11 @@ OPTIONS
                         with - to remove it first (e.g. --html-class=-light,dark
                         forces a class-based dark theme; both the = form and the
                         space form work). Waits 600ms for the repaint.
+      --allow-status    Skip the response-status guard. By default a non-2xx/3xx
+                        response fails the capture instead of writing a screenshot
+                        of an error page.
+      --expect-text <s> Fail the capture if the rendered page text does not
+                        contain this string.
       --allow-blank     Skip the blank-render guard. By default a page whose
                         body still has almost no text or elements after 10s of
                         polling fails the capture instead of writing a blank
@@ -155,6 +160,8 @@ function parse() {
       act: { type: "string" },
       mock: { type: "string" },
       "allow-blank": { type: "boolean", default: false },
+      "allow-status": { type: "boolean", default: false },
+      "expect-text": { type: "string" },
       gif: { type: "string" },
       inspect: { type: "string" },
       "inspect-attr": { type: "string" },
@@ -479,6 +486,8 @@ async function main() {
       fail(`--cookies file not found: ${cookiesPath}`);
     }
     const allowBlank = Boolean(values["allow-blank"]);
+    const allowStatus = Boolean(values["allow-status"]);
+    const expectText = values["expect-text"];
 
     let inspect: InspectOptions | undefined;
     if (values.inspect != null) {
@@ -507,7 +516,7 @@ async function main() {
       fail((e as Error).message);
     }
 
-    const options = { url, width, height, fullPage, headless, scale, waitUntil, delayMs, timeoutMs, cookiesPath, htmlClass, allowBlank, inspect, inspectFooter, actions, mocks };
+    const options = { url, width, height, fullPage, headless, scale, waitUntil, delayMs, timeoutMs, cookiesPath, htmlClass, allowBlank, inspect, inspectFooter, actions, mocks, allowStatus, expectText };
 
     let out = defaultOutput();
     if (values.output != null) {
