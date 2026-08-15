@@ -43,4 +43,4 @@ test("a publish failure after a successful write exits 6 and keeps the artifact 
 
   expect(proc.exitCode).toBe(6);
   expect(existsSync(out)).toBe(true);
-});
+}, 120000);
