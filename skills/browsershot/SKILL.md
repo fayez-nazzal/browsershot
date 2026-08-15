@@ -5,7 +5,7 @@ license: MIT
 compatibility: Needs the `browsershot` binary on `PATH`, an installed Chrome that Playwright can drive, and `jq` for reading JSON output. Authenticated captures need the sibling `authstate` CLI.
 metadata:
   author: Fayez Nazzal
-  version: "1.1.0"
+  version: "1.1.1"
 ---
 
 # browsershot
