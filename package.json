@@ -1,6 +1,6 @@
 {
-  "name": "browsershot",
-  "version": "1.0.0",
+  "name": "@fayeznazzal/browsershot",
+  "version": "1.0.1",
   "description": "Capture a web page to a PNG or GIF via your installed Chrome (Playwright).",
   "type": "module",
   "bin": {
@@ -21,5 +21,8 @@
   },
   "devDependencies": {
     "@types/bun": "latest"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
