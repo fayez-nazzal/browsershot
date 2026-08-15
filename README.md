@@ -1,5 +1,7 @@
 # browsershot
 
+[![CI](https://github.com/fayez-nazzal/browsershot/actions/workflows/ci.yml/badge.svg)](https://github.com/fayez-nazzal/browsershot/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 `browsershot` captures a web page to a PNG or an animated GIF using headless Chrome through Playwright.
 
 It is built for producing review evidence. You point it at a URL, optionally drive the page with a few steps, and it writes an image plus a machine readable summary you can assert on.
@@ -40,6 +42,51 @@ bun link
 ```sh
 echo 'export PATH="$HOME/.bun/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
 ```
+
+## Use it with your AI agent
+
+`browsershot` is built to be driven by an AI coding agent. The bundled skill teaches your agent when to reach for it and how to call it.
+
+One command sets it up:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/fayez-nazzal/browsershot/main/scripts/install-skill.sh | bash
+```
+
+It asks which agents to set up. It defaults to Claude Code.
+
+For scripts and CI, use the non-interactive form:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/fayez-nazzal/browsershot/main/scripts/install-skill.sh | bash -s -- --agents claude -y
+```
+
+- `--agents` accepts `claude`, `codex`, `cursor`, `opencode`, `grok`, `antigravity` or `all`.
+- `--scope user` installs for every project instead of just this one.
+
+### Claude Code plugin
+
+Claude Code users can instead install the whole repo as a plugin:
+
+```sh
+/plugin marketplace add fayez-nazzal/browsershot
+/plugin install browsershot
+```
+
+### Supported agents
+
+Skill paths below are project scope.
+
+| Agent | Skill path |
+|---|---|
+| Claude Code | `.claude/skills/browsershot/` |
+| OpenAI Codex CLI | `.agents/skills/browsershot/` |
+| Cursor | `.cursor/skills/browsershot/` |
+| opencode | `.opencode/skills/browsershot/` |
+| xAI Grok CLI | `.grok/skills/browsershot/` |
+| Google Antigravity | `.agents/skills/browsershot/` |
+
+Full recipes live in [`AGENTS.md`](AGENTS.md).
 
 ## Configure
 
@@ -141,6 +188,12 @@ bun test                  # unit tests, no network
 bun run src/cli.ts --help
 ```
 
+## Contributing
+
+Issues and pull requests are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+Security reports go through [`SECURITY.md`](SECURITY.md).
+
 ## License
 
-MIT. See `LICENSE`.
+MIT. See [`LICENSE`](LICENSE).

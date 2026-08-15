@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import { parseArgs } from "node:util";
+import packageJson from "../package.json";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, dirname, resolve } from "node:path";
@@ -15,7 +16,7 @@ import type { InspectOptions } from "./inspect.ts";
 import { buildCardHtml, buildSide, parsePair, DEFAULT_LABELS } from "./card.ts";
 import { EXIT_FAILED, EXIT_USAGE, EXIT_WRITE_ERROR, publishFailure, type ExitCode } from "./exit-codes.ts";
 
-export const VERSION = "1.0.0";
+export const VERSION = packageJson.version;
 
 const WAIT_EVENTS = ["load", "domcontentloaded", "networkidle", "commit"] as const;
 

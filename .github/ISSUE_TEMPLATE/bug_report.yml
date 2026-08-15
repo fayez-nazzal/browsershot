@@ -1,0 +1,46 @@
+name: Bug report
+description: Report something that does not work
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Describe the wrong behaviour in a sentence or two.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: The exact command you ran
+      render: sh
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: The output, including the exit code
+      description: Paste stdout and stderr. Add the exit code from `echo $?`.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `browsershot --version`.
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      description: For example `macOS 15.6` or `Ubuntu 24.04`.
+    validations:
+      required: true
