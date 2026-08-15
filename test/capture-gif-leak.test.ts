@@ -76,3 +76,21 @@ test("a rejecting video.path still closes the opened browser", async () => {
   await expect(captureGif(BASE_OPTIONS, 100, "/tmp/out.gif", deps)).rejects.toThrow("video path blew up");
   expect(openCount()).toBe(0);
 });
+
+test("the video is converted after the session closes and before the directory is removed", async () => {
+  const order: string[] = [];
+  const fakeVideo = { path: async () => "/tmp/does-not-matter.webm" };
+  const fakePage = { waitForTimeout: async () => {}, video: () => fakeVideo };
+  const fakeSession = { context: { newPage: async () => fakePage, close: async () => {} }, browser: { close: async () => {} } };
+  const deps: CaptureGifDeps = {
+    openSession: async () => fakeSession as never,
+    closeSession: async () => { order.push("closeSession"); },
+    preparePage: async () => {},
+    playActions: async () => {},
+    mkdtemp: () => "/tmp/browsershot-video-fake",
+    rmDir: () => { order.push("rmDir"); },
+    convert: () => { order.push("convert"); },
+  };
+  await captureGif(BASE_OPTIONS, 10, "/tmp/out.gif", deps);
+  expect(order).toEqual(["closeSession", "convert", "rmDir"]);
+});

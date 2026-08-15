@@ -231,6 +231,7 @@ export interface CaptureGifDeps {
   playActions: typeof playActions;
   mkdtemp: () => string;
   rmDir: (path: string) => void;
+  convert: (videoPath: string, gifPath: string) => void;
 }
 
 const defaultCaptureGifDeps: CaptureGifDeps = {
@@ -240,6 +241,7 @@ const defaultCaptureGifDeps: CaptureGifDeps = {
   playActions,
   mkdtemp: () => mkdtempSync(join(tmpdir(), "browsershot-video-")),
   rmDir: (path) => rmSync(path, { recursive: true, force: true }),
+  convert: convertVideoToGif,
 };
 
 export async function captureGif(
@@ -249,22 +251,25 @@ export async function captureGif(
   deps: CaptureGifDeps = defaultCaptureGifDeps,
 ): Promise<void> {
   const videoDir = deps.mkdtemp();
-  await withScope(async (scope) => {
-    scope.use({ close: () => deps.rmDir(videoDir) });
-    const size = { width: o.width, height: o.height };
-    const session = await deps.openSession(o, { recordVideo: { dir: videoDir, size } });
-    scope.use({ close: () => deps.closeSession(session) });
-    const page = await session.context.newPage();
-    await deps.preparePage(page, o);
-    await deps.playActions(page, o);
-    await page.waitForTimeout(durationMs);
-    const video = page.video();
-    if (video == null) {
-      throw new Error("video recording produced no file");
-    }
-    const videoPath = await video.path();
-    convertVideoToGif(videoPath, gifPath);
-  });
+  try {
+    const videoPath = await withScope(async (scope) => {
+      const size = { width: o.width, height: o.height };
+      const session = await deps.openSession(o, { recordVideo: { dir: videoDir, size } });
+      scope.use({ close: () => deps.closeSession(session) });
+      const page = await session.context.newPage();
+      await deps.preparePage(page, o);
+      await deps.playActions(page, o);
+      await page.waitForTimeout(durationMs);
+      const video = page.video();
+      if (video == null) {
+        throw new Error("video recording produced no file");
+      }
+      return await video.path();
+    });
+    deps.convert(videoPath, gifPath);
+  } finally {
+    deps.rmDir(videoDir);
+  }
 }
 
 const GIF_FPS = 12;

@@ -4,6 +4,8 @@
 
 It is built for producing review evidence. You point it at a URL, optionally drive the page with a few steps, and it writes an image plus a machine readable summary you can assert on.
 
+It is made to be called by an AI coding agent, not typed by a human. The contract is machine readable: `--json` prints one JSON object on stdout, `--inspect-json` writes an element sidecar, and every failure carries a documented exit code. Recipes and traps live in [`AGENTS.md`](AGENTS.md).
+
 ## What it does
 
 - Captures a page to a PNG at retina scale by default.

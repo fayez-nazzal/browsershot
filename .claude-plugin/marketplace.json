@@ -1,0 +1,14 @@
+{
+  "name": "browsershot-marketplace",
+  "owner": {
+    "name": "Fayez Nazzal",
+    "url": "https://github.com/fayez-nazzal"
+  },
+  "plugins": [
+    {
+      "name": "browsershot",
+      "source": "./",
+      "description": "CLI for AI coding agents: capture a web page to a PNG or GIF via your installed Chrome (Playwright), with a JSON contract to assert on."
+    }
+  ]
+}

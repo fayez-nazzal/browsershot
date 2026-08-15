@@ -48,7 +48,7 @@ OPTIONS
       --cookies <path>  Playwright storageState jar for an authenticated capture.
                         browsershot never logs in and never stores credentials.
                         Produce the jar with authstate, which owns every login:
-                          jar=$(authstate ensure --credentials <yaml> --purpose <name>)
+                          jar=$(authstate ensure --credentials <yaml> --purpose <name> | jq -r .path)
                           browsershot <url> --cookies "$jar"
                         A jar is a plain file, so any number of captures can read
                         the same one at once, and captures on different accounts

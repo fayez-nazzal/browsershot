@@ -1,8 +1,26 @@
 {
   "name": "@fayeznazzal/browsershot",
-  "version": "1.0.1",
-  "description": "Capture a web page to a PNG or GIF via your installed Chrome (Playwright).",
+  "version": "1.1.0",
+  "description": "CLI for AI coding agents: capture a web page to a PNG or GIF via your installed Chrome (Playwright), with a JSON contract to assert on.",
   "type": "module",
+  "keywords": [
+    "ai-agents",
+    "agent-tools",
+    "claude-code",
+    "codex",
+    "antigravity",
+    "grok-cli",
+    "cursor",
+    "opencode",
+    "agentic",
+    "cli",
+    "screenshot",
+    "playwright",
+    "chrome",
+    "headless-browser",
+    "gif",
+    "pr-evidence"
+  ],
   "bin": {
     "browsershot": "dist/browsershot"
   },
