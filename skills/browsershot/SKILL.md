@@ -5,7 +5,7 @@ license: MIT
 compatibility: Needs the `browsershot` binary on `PATH`, an installed Chrome that Playwright can drive, and `jq` for reading JSON output. Authenticated captures need the sibling `authstate` CLI.
 metadata:
   author: Fayez Nazzal
-  version: "1.1.1"
+  version: "1.2.0"
 ---
 
 # browsershot
@@ -52,8 +52,7 @@ jq -r '.inspected.name' probe.json
 Prefer a narrow selector over `body`. For an authenticated page, get a jar first.
 
 ```sh
-jar=$(authstate ensure --credentials .testing-credentials.yaml --purpose basic-user | jq -r .path)
-browsershot "https://example.com/account" --cookies "$jar" --inspect '[data-testid="account-name"]' -o account.png --json
+browsershot "https://example.com/account" --auth-credentials .testing-credentials.yaml --auth-purpose basic-user --inspect '[data-testid="account-name"]' -o account.png --json
 ```
 
 ## Reading the result
@@ -84,7 +83,8 @@ Codes `3` and `4` exist in `src/exit-codes.ts` and are never raised. Do not bran
 
 - Never read the PNG or GIF into your context. Read `--json` stdout and the `--inspect-json` sidecar.
 - Always pass `--json` when a script consumes the run, and never combine `--json` with `--stdout`. That exits `2`.
-- Never log in from `browsershot`. There is no login flag. Pass a jar from `authstate` with `--cookies`, always piped through `jq -r .path`.
+- Never log in from `browsershot`. There is no login flag. Use `--auth-credentials <yaml>`, which gets the jar from `authstate` for you. Add `--auth-purpose <name>` when the file holds several accounts.
+- Only reach for `--cookies` when you already hold a jar path. Piping `authstate` through `jq -r .path` is required then, because it prints a JSON envelope.
 - Assert on text before you believe a run. A file is written even when the flow went nowhere.
 - One capture, one claim. If you cannot name what the final frame proves, do not ship it.
 - Label any capture built with `--mock` as simulated, in the same breath as the path.

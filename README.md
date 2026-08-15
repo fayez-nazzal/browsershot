@@ -55,6 +55,8 @@ curl -fsSL https://raw.githubusercontent.com/fayez-nazzal/browsershot/main/scrip
 
 It asks which agents to set up. It defaults to Claude Code.
 
+Your agent never handles a password. For a signed in capture it passes `--auth-credentials <path>`, plus `--auth-purpose <name>` when the credentials file holds more than one account, and `browsershot` gets the jar from `authstate`.
+
 For scripts and CI, use the non-interactive form:
 
 ```sh
@@ -95,6 +97,7 @@ Full recipes live in [`AGENTS.md`](AGENTS.md).
 Two things are optional.
 
 - For an authenticated capture, pass a Playwright storage state file with `--cookies <path>`. `browsershot` never logs in and never stores a password.
+- Or pass `--auth-credentials <path>` with a credentials YAML and let `browsershot` call `authstate` for you. It runs `authstate ensure --credentials <path>`, reads the `path` field of the JSON envelope, and uses that jar. Add `--auth-purpose <name>` to pick one account out of the file. `--auth-credentials` and `--cookies` together exit `2`, and a missing `authstate` binary exits `3`.
 - For `--publish`, configure an `rclone` remote once with `rclone config`. Then pass a destination such as `--publish "gdrive:shots/my-repo/my-branch/"`.
 
 Keep any local credentials file out of the repo. `.gitignore` already covers `.env` and `.testing-credentials.yaml`.
@@ -109,6 +112,15 @@ browsershot example.com --size 1920x1080         # custom viewport
 browsershot example.com --full-page              # whole scrollable page
 browsershot example.com --gif 5                  # 5 second recording -> shot.gif
 browsershot example.com --stdout > shot.png
+```
+
+Capture a page behind a login in one command:
+
+```sh
+browsershot https://example.com/account \
+  --auth-credentials .testing-credentials.yaml \
+  --auth-purpose basic-user \
+  --inspect '[data-testid="account-name"]'
 ```
 
 Drive the page first, then shoot:

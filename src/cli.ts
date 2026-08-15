@@ -15,6 +15,7 @@ import { parseMocks, type Mock } from "./mock.ts";
 import type { InspectOptions } from "./inspect.ts";
 import { buildCardHtml, buildSide, parsePair, DEFAULT_LABELS } from "./card.ts";
 import { EXIT_FAILED, EXIT_USAGE, EXIT_WRITE_ERROR, publishFailure, type ExitCode } from "./exit-codes.ts";
+import { resolveAuthJar, AuthStateFailure } from "./authstate.ts";
 
 export const VERSION = packageJson.version;
 
@@ -54,6 +55,13 @@ OPTIONS
                         A jar is a plain file, so any number of captures can read
                         the same one at once, and captures on different accounts
                         simply pass different jars.
+      --auth-credentials <path>  Resolve the jar in one step instead of shelling out
+                        to authstate yourself. browsershot runs
+                        "authstate ensure --credentials <path>", reads the "path"
+                        field of the JSON envelope, and uses it as --cookies.
+                        Passing both --auth-credentials and --cookies exits 2.
+      --auth-purpose <name>  Which account in the credentials file to use. Passed
+                        through to authstate as --purpose. Optional.
       --scale <n>       deviceScaleFactor for hi-dpi (default: 2, retina)
       --wait <event>    ${WAIT_EVENTS.join(" | ")} (default: load)
       --delay <ms>      Extra wait after load before capture (default: 0)
@@ -158,6 +166,8 @@ function parse() {
       "full-page": { type: "boolean", default: false },
       headed: { type: "boolean", default: false },
       cookies: { type: "string" },
+      "auth-credentials": { type: "string" },
+      "auth-purpose": { type: "string" },
       scale: { type: "string" },
       wait: { type: "string" },
       delay: { type: "string" },
@@ -513,7 +523,25 @@ async function main() {
       fullPage = true;
     }
     const headless = !values.headed;
-    const cookiesPath = values.cookies;
+    const authCredentials = values["auth-credentials"];
+    const authPurpose = values["auth-purpose"];
+    if (authCredentials != null && values.cookies != null) {
+      fail("--auth-credentials and --cookies both choose the jar. Pass one of them.");
+    }
+    if (authCredentials == null && authPurpose != null) {
+      fail("--auth-purpose needs --auth-credentials");
+    }
+    let cookiesPath = values.cookies;
+    if (authCredentials != null) {
+      try {
+        cookiesPath = resolveAuthJar({ credentialsPath: authCredentials, purpose: authPurpose });
+      } catch (e) {
+        if (e instanceof AuthStateFailure) {
+          fail(e.message, e.code);
+        }
+        fail((e as Error).message, EXIT_FAILED);
+      }
+    }
     if (cookiesPath != null && !existsSync(cookiesPath)) {
       fail(`--cookies file not found: ${cookiesPath}`);
     }
