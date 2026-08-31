@@ -110,8 +110,8 @@ interface RuntimeAttempt {
 
 function attemptsFor(headless: boolean): RuntimeAttempt[] {
   let attempts: RuntimeAttempt[] = [
-    { runtime: "chrome", options: { headless: true, channel: "chrome" }, note: "launching chrome headless" },
-    { runtime: "chromium-headless-shell", options: { headless: true }, note: "chrome unavailable, launching bundled chromium" },
+    { runtime: "chromium-headless-shell", options: { headless: true }, note: "launching chromium headless shell" },
+    { runtime: "chrome", options: { headless: true, channel: "chrome" }, note: "chromium headless shell unavailable, launching full chrome" },
   ];
   if (!headless) {
     attempts = [

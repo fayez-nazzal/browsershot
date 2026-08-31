@@ -73,3 +73,56 @@ test("capture forwards launch progress to the log", async () => {
   await capture(options, { launchBrowser });
   expect(messages.length).toBeGreaterThan(0);
 });
+
+test("headless capture prefers the chromium headless shell", async () => {
+  const { launchBrowser, calls } = scriptedLauncher(fakeBrowser(fakePage()), []);
+  await capture(BASE_OPTIONS, { launchBrowser });
+  expect(calls).toEqual([{ headless: true }]);
+});
+
+test("a failed headless shell launch retries full chrome once", async () => {
+  const errors = [new Error("Executable doesn't exist at /fake/headless-shell")];
+  const { launchBrowser, calls } = scriptedLauncher(fakeBrowser(fakePage()), errors);
+  const result = await capture(BASE_OPTIONS, { launchBrowser });
+  expect(calls).toEqual([{ headless: true }, { headless: true, channel: "chrome" }]);
+  expect(result.png.length).toBe(4);
+});
+
+test("two failed launches preserve the final actionable error", async () => {
+  const errors = [
+    new Error("Executable doesn't exist at /fake/headless-shell"),
+    new Error("Executable doesn't exist at /fake/chrome"),
+  ];
+  const { launchBrowser, calls } = scriptedLauncher(fakeBrowser(fakePage()), errors);
+  let message = "";
+  try {
+    await capture(BASE_OPTIONS, { launchBrowser });
+  } catch (e) {
+    message = (e as Error).message;
+  }
+  expect(calls.length).toBe(2);
+  expect(message).toContain("bun playwright install chromium");
+  expect(message).toContain("/fake/chrome");
+  expect(message).not.toContain("/fake/headless-shell");
+});
+
+test("headed capture falls back to bundled chromium once", async () => {
+  const options = { ...BASE_OPTIONS, headless: false };
+  const errors = [new Error("chrome is not installed")];
+  const { launchBrowser, calls } = scriptedLauncher(fakeBrowser(fakePage()), errors);
+  await capture(options, { launchBrowser });
+  expect(calls).toEqual([{ headless: false, channel: "chrome" }, { headless: false }]);
+});
+
+test("page failures do not trigger a second capture", async () => {
+  const page = fakePage(new Error("navigation blew up"));
+  const { launchBrowser, calls } = scriptedLauncher(fakeBrowser(page), []);
+  let message = "";
+  try {
+    await capture(BASE_OPTIONS, { launchBrowser });
+  } catch (e) {
+    message = (e as Error).message;
+  }
+  expect(message).toBe("navigation blew up");
+  expect(calls.length).toBe(1);
+});
