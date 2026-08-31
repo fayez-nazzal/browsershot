@@ -126,3 +126,30 @@ test("page failures do not trigger a second capture", async () => {
   expect(message).toBe("navigation blew up");
   expect(calls.length).toBe(1);
 });
+
+test("launch logs report the selected runtime", async () => {
+  const messages: string[] = [];
+  const options = { ...BASE_OPTIONS, log: (message: string) => { messages.push(message); } };
+  const { launchBrowser } = scriptedLauncher(fakeBrowser(fakePage()), []);
+  await capture(options, { launchBrowser });
+  expect(messages).toContain("launching chromium headless shell");
+  expect(messages).toContain("runtime chromium-headless-shell");
+});
+
+test("fallback logs report the full chrome runtime", async () => {
+  const messages: string[] = [];
+  const options = { ...BASE_OPTIONS, log: (message: string) => { messages.push(message); } };
+  const errors = [new Error("Executable doesn't exist at /fake/headless-shell")];
+  const { launchBrowser } = scriptedLauncher(fakeBrowser(fakePage()), errors);
+  await capture(options, { launchBrowser });
+  expect(messages).toContain("chromium headless shell unavailable, launching full chrome");
+  expect(messages).toContain("runtime chrome");
+});
+
+test("headed logs report the chrome runtime", async () => {
+  const messages: string[] = [];
+  const options = { ...BASE_OPTIONS, headless: false, log: (message: string) => { messages.push(message); } };
+  const { launchBrowser } = scriptedLauncher(fakeBrowser(fakePage()), []);
+  await capture(options, { launchBrowser });
+  expect(messages).toContain("runtime chrome");
+});

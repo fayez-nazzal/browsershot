@@ -140,6 +140,7 @@ async function selectRuntime(headless: boolean, log: ((message: string) => void)
     try {
       log?.(attempt.note);
       const browser = await launchBrowser(attempt.options);
+      log?.(`runtime ${attempt.runtime}`);
       selected = { browser, runtime: attempt.runtime };
     } catch (e) {
       lastError = e as Error;
