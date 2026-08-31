@@ -1,5 +1,5 @@
 import { chromium } from "playwright";
-import type { Browser, BrowserContext, Page } from "playwright";
+import type { Browser, BrowserContext, LaunchOptions, Page } from "playwright";
 import { runActions, type Action } from "./act.ts";
 import { applyMocks, type Mock } from "./mock.ts";
 import { inspectElement, type ElementRecord, type InspectOptions } from "./inspect.ts";
@@ -79,41 +79,91 @@ export function parseHtmlClassFlag(raw: string): HtmlClassChange {
   return change;
 }
 
+export type RuntimeName = "chromium-headless-shell" | "chrome" | "chromium";
+
+export interface LaunchResult {
+  browser: Browser;
+  runtime: RuntimeName;
+}
+
+export type LaunchBrowser = (options: LaunchOptions) => Promise<Browser>;
+
+export interface CaptureDeps {
+  launchBrowser: LaunchBrowser;
+}
+
+const defaultCaptureDeps: CaptureDeps = {
+  launchBrowser: (options) => chromium.launch(options),
+};
+
 interface Session {
   context: BrowserContext;
   browser: Browser | null;
+  runtime: RuntimeName;
 }
 
-async function launch(headless: boolean, onLaunch?: (message: string) => void): Promise<Browser> {
-  let browser: Browser;
-  try {
-    onLaunch?.("launching chrome headless");
-    browser = await chromium.launch({ headless, channel: "chrome" });
-  } catch {
-    onLaunch?.("chrome unavailable — launching bundled chromium headless");
-    try {
-      browser = await chromium.launch({ headless });
-    } catch (e) {
-      const msg = (e as Error).message;
-      let error = e as Error;
-      if (/Executable doesn'?t exist|please run|install/i.test(msg)) {
-        error = new Error(`Chromium not found. Install it once with: bun playwright install chromium\n${msg}`);
-      }
-      throw error;
-    }
+interface RuntimeAttempt {
+  runtime: RuntimeName;
+  options: LaunchOptions;
+  note: string;
+}
+
+function attemptsFor(headless: boolean): RuntimeAttempt[] {
+  let attempts: RuntimeAttempt[] = [
+    { runtime: "chrome", options: { headless: true, channel: "chrome" }, note: "launching chrome headless" },
+    { runtime: "chromium-headless-shell", options: { headless: true }, note: "chrome unavailable, launching bundled chromium" },
+  ];
+  if (!headless) {
+    attempts = [
+      { runtime: "chrome", options: { headless: false, channel: "chrome" }, note: "launching chrome (headed)" },
+      { runtime: "chromium", options: { headless: false }, note: "chrome unavailable, launching bundled chromium (headed)" },
+    ];
   }
-  return browser;
+  return attempts;
 }
 
-async function openSession(o: CaptureOptions, extra: Record<string, unknown> = {}): Promise<Session> {
-  const browser = await launch(o.headless, o.log);
+function improveLaunchError(error: Error): Error {
+  let result = error;
+  if (/Executable doesn'?t exist|please run|install/i.test(error.message)) {
+    result = new Error(`Chromium not found. Install it once with: bun playwright install chromium\n${error.message}`);
+  }
+  return result;
+}
+
+async function selectRuntime(headless: boolean, log: ((message: string) => void) | undefined, launchBrowser: LaunchBrowser): Promise<LaunchResult> {
+  const attempts = attemptsFor(headless);
+  let selected: LaunchResult | null = null;
+  let lastError = new Error("no browser runtime could be launched");
+  let index = 0;
+  while (selected == null && index < attempts.length) {
+    const attempt = attempts[index]!;
+    try {
+      log?.(attempt.note);
+      const browser = await launchBrowser(attempt.options);
+      selected = { browser, runtime: attempt.runtime };
+    } catch (e) {
+      lastError = e as Error;
+    }
+    index = index + 1;
+  }
+  let result: LaunchResult;
+  if (selected == null) {
+    throw improveLaunchError(lastError);
+  }
+  result = selected;
+  return result;
+}
+
+async function openSession(o: CaptureOptions, deps: CaptureDeps, extra: Record<string, unknown> = {}): Promise<Session> {
+  const launchResult = await selectRuntime(o.headless, o.log, deps.launchBrowser);
+  const browser = launchResult.browser;
   const viewport = { width: o.width, height: o.height };
   const contextOptions: Record<string, unknown> = { viewport, deviceScaleFactor: o.scale, ...extra };
   if (o.cookiesPath != null) {
     contextOptions.storageState = o.cookiesPath;
   }
   const context = await browser.newContext(contextOptions);
-  const session: Session = { context, browser };
+  const session: Session = { context, browser, runtime: launchResult.runtime };
   if (o.mocks != null) {
     await applyMocks(
       session.context,
@@ -217,8 +267,8 @@ async function playActions(page: Page, o: CaptureOptions): Promise<void> {
   }
 }
 
-export async function capture(o: CaptureOptions): Promise<CaptureResult> {
-  const session = await openSession(o);
+export async function capture(o: CaptureOptions, deps: CaptureDeps = defaultCaptureDeps): Promise<CaptureResult> {
+  const session = await openSession(o, deps);
   let png: Uint8Array;
   let inspected: ElementRecord | null = null;
   try {
@@ -276,7 +326,7 @@ export async function captureGif(
   try {
     const videoPath = await withScope(async (scope) => {
       const size = { width: o.width, height: o.height };
-      const session = await deps.openSession(o, { recordVideo: { dir: videoDir, size } });
+      const session = await deps.openSession(o, defaultCaptureDeps, { recordVideo: { dir: videoDir, size } });
       scope.use({ close: () => deps.closeSession(session) });
       const page = await session.context.newPage();
       await deps.preparePage(page, o);
