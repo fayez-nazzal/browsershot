@@ -1,7 +1,7 @@
 # browsershot for agents
 
 `browsershot` is built to be called by an AI coding agent, not typed by a human.
-It drives a real Chrome, captures a page to a PNG or a GIF, and hands back a
+It drives a real browser, captures a page to a PNG or a GIF, and hands back a
 machine readable summary. The reason to call it instead of writing throwaway
 Playwright is `--json` plus `--inspect-json`. You get `outputPath`, `bytes`,
 `sha256` and the inspected element as text, so you can prove what the page did

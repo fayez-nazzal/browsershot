@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/fayez-nazzal/browsershot/actions/workflows/ci.yml/badge.svg)](https://github.com/fayez-nazzal/browsershot/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-`browsershot` captures a web page to a PNG or an animated GIF using headless Chrome through Playwright.
+`browsershot` captures a web page to a PNG or an animated GIF through Playwright. Headless captures run on the bundled Chromium headless shell first and fall back to installed Google Chrome when the shell cannot launch.
 
 It is built for producing review evidence. You point it at a URL, optionally drive the page with a few steps, and it writes an image plus a machine readable summary you can assert on.
 
@@ -22,7 +22,8 @@ It is made to be called by an AI coding agent, not typed by a human. The contrac
 ## Requirements
 
 - [Bun](https://bun.sh) to run the CLI.
-- Google Chrome installed. Playwright uses the `chrome` channel first and falls back to bundled Chromium.
+- The Playwright Chromium headless shell from `bun playwright install chromium`. Headless captures run on it first.
+- Google Chrome as the fallback. A failed headless shell launch retries once with Chrome, and `--headed` captures use Chrome first.
 - macOS only for GIF assembly. `--box` and `--marker` work everywhere.
 - [`rclone`](https://rclone.org) only if you use `--publish`.
 

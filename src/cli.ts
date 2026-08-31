@@ -39,9 +39,10 @@ USAGE
   browsershot config <set|unset|show|path> [name] [value]
   browsershot <quick-path> [options]
 
-  Loads <url> in your installed Google Chrome (headless, Playwright channel
-  "chrome") and saves a screenshot of the viewport. Falls back to bundled
-  Chromium with a warning when Chrome is unavailable.
+  Loads <url> headless in the bundled Chromium headless shell and saves a
+  screenshot of the viewport. If the shell cannot launch, it retries once
+  with installed Google Chrome (channel "chrome"). Headed captures use
+  Google Chrome first and fall back to bundled Chromium.
 
 OPTIONS
   -o, --output <path>   Output PNG path (default: ~/browsershot/<timestamp>.png)
