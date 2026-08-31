@@ -14,8 +14,10 @@ import { parseActions, type Action } from "./act.ts";
 import { parseMocks, type Mock } from "./mock.ts";
 import type { InspectOptions } from "./inspect.ts";
 import { buildCardHtml, buildSide, parsePair, DEFAULT_LABELS } from "./card.ts";
-import { EXIT_FAILED, EXIT_USAGE, EXIT_WRITE_ERROR, publishFailure, type ExitCode } from "./exit-codes.ts";
-import { resolveAuthJar, AuthStateFailure } from "./authstate.ts";
+import { EXIT_FAILED, EXIT_OK, EXIT_USAGE, EXIT_WRITE_ERROR, publishFailure, type ExitCode } from "./exit-codes.ts";
+import { resolveAuthJar, AuthStateFailure, discoverAuthCredentials } from "./authstate.ts";
+import { addProfileExclude, findProjectRoot, profilePaths, readProfile, resolveQuickUrl, setProfileValue, unsetProfileValue } from "./profile.ts";
+import { openFile } from "./open.ts";
 
 export const VERSION = packageJson.version;
 
@@ -34,6 +36,8 @@ const HELP = `browsershot ${VERSION} — capture a web page to a PNG
 
 USAGE
   browsershot <url> [options]
+  browsershot config <set|unset|show|path> [name] [value]
+  browsershot <quick-path> [options]
 
   Loads <url> in your installed Google Chrome (headless, Playwright channel
   "chrome") and saves a screenshot of the viewport. Falls back to bundled
@@ -50,18 +54,22 @@ OPTIONS
       --cookies <path>  Playwright storageState jar for an authenticated capture.
                         browsershot never logs in and never stores credentials.
                         Produce the jar with authstate, which owns every login:
-                          jar=$(authstate ensure --credentials <yaml> --purpose <name> | jq -r .path)
+                          jar=$(authstate ensure --credentials <yaml> --user <name> | jq -r .path)
                           browsershot <url> --cookies "$jar"
                         A jar is a plain file, so any number of captures can read
                         the same one at once, and captures on different accounts
                         simply pass different jars.
-      --auth-credentials <path>  Resolve the jar in one step instead of shelling out
-                        to authstate yourself. browsershot runs
-                        "authstate ensure --credentials <path>", reads the "path"
-                        field of the JSON envelope, and uses it as --cookies.
-                        Passing both --auth-credentials and --cookies exits 2.
-      --auth-purpose <name>  Which account in the credentials file to use. Passed
-                        through to authstate as --purpose. Optional.
+      --auth            Resolve the jar in one step: discover .testing-credentials.yaml
+                        (walking up from the working directory), run
+                        "authstate ensure" for the file's default user, read the
+                        "path" field of the JSON envelope, and use it as --cookies.
+                        Pass --auth-user to pick a different entry.
+                        Passing --cookies together with any --auth* flag exits 2.
+      --auth-user <name>  Which credentials entry to use with --auth. Implies --auth.
+      --auth-credentials <path>  Credentials file to use instead of discovery.
+                        Implies the auth flow; combine with --auth-user. Useful
+                        when .testing-credentials.yaml lives somewhere the
+                        walk-up will not find.
       --scale <n>       deviceScaleFactor for hi-dpi (default: 2, retina)
       --wait <event>    ${WAIT_EVENTS.join(" | ")} (default: load)
       --delay <ms>      Extra wait after load before capture (default: 0)
@@ -139,6 +147,8 @@ OPTIONS
       --marker <x,y[,color]>   Draw a point marker (filled dot) on the PNG at
                         that pixel coordinate; repeatable
       --stdout          Write PNG bytes to stdout instead of a file
+      --verbose         Detailed Playwright progress on stderr: phase timings,
+                        failed requests, console errors, act step echo, mock hits
       --publish <dest>  Upload the written file to an rclone remote dir (e.g.
                         gdrive:PR-Shots/<repo>/<branch>/), make it public, and
                         print a PR-ready line to stdout: a high-res inline
@@ -150,6 +160,7 @@ OPTIONS
                         sha256, gifPath, inspectJsonPath, inspected and publishedUrl.
                         Human readable lines stay on stderr. Without it the absolute
                         output path is the first stdout line.
+      --auto-open       Open the written capture with the platform default app
   -h, --help            Show this help
   -v, --version         Show version
 `;
@@ -166,8 +177,11 @@ function parse() {
       "full-page": { type: "boolean", default: false },
       headed: { type: "boolean", default: false },
       cookies: { type: "string" },
+      auth: { type: "boolean", default: false },
+      "auth-user": { type: "string" },
       "auth-credentials": { type: "string" },
       "auth-purpose": { type: "string" },
+      verbose: { type: "boolean", default: false },
       scale: { type: "string" },
       wait: { type: "string" },
       delay: { type: "string" },
@@ -197,6 +211,7 @@ function parse() {
       "publish-label": { type: "string" },
       help: { type: "boolean", short: "h", default: false },
       version: { type: "boolean", short: "v", default: false },
+      "auto-open": { type: "boolean", default: false },
     },
     allowPositionals: true,
   });
@@ -322,6 +337,46 @@ function fail(msg: string, code: ExitCode = EXIT_USAGE): never {
   process.exit(code);
 }
 
+function runConfigCommand(args: string[]): never {
+  let root = "";
+  try {
+    root = findProjectRoot();
+  } catch (e) {
+    fail((e as Error).message);
+  }
+  const command = args[0];
+  try {
+    if (command === "set") {
+      if (args.length < 2 || args.length > 3) {
+        fail("config set needs a setting and value");
+      }
+      const config = setProfileValue(root, args[1]!, args[2]);
+      process.stdout.write(`${JSON.stringify(config)}\n`);
+    } else if (command === "unset") {
+      if (args.length !== 2) {
+        fail("config unset needs a setting");
+      }
+      const config = unsetProfileValue(root, args[1]!);
+      process.stdout.write(`${JSON.stringify(config)}\n`);
+    } else if (command === "show") {
+      if (args.length !== 1) {
+        fail("config show takes no arguments");
+      }
+      process.stdout.write(`${JSON.stringify(readProfile(root), null, 2)}\n`);
+    } else if (command === "path") {
+      if (args.length !== 1) {
+        fail("config path takes no arguments");
+      }
+      process.stdout.write(`${profilePaths(root).config}\n`);
+    } else {
+      fail("config command must be set, unset, show, or path");
+    }
+  } catch (e) {
+    fail((e as Error).message);
+  }
+  process.exit(EXIT_OK);
+}
+
 async function main() {
   let parsed: ReturnType<typeof parse>;
   try {
@@ -339,8 +394,23 @@ async function main() {
     const comparing = values.compare != null;
     const showingEvidence = values.evidence != null;
     const buildsItsOwnPage = comparing || showingEvidence;
+    const quickCapture = !buildsItsOwnPage && positionals[0] != null && positionals[0].startsWith("/");
+    if (positionals[0] === "config") {
+      runConfigCommand(positionals.slice(1));
+    }
+    let projectRoot = "";
+    let profile: ReturnType<typeof readProfile> = {};
+    try {
+      projectRoot = findProjectRoot();
+      profile = readProfile(projectRoot);
+      addProfileExclude(projectRoot);
+    } catch (e) {
+      if (quickCapture) {
+        fail((e as Error).message);
+      }
+    }
     if (positionals.length === 0 && !buildsItsOwnPage) {
-      fail("missing <url> (try: browsershot --help)");
+      fail("missing <url> or <quick-path> (try: browsershot --help)");
     }
     if (positionals.length > 0 && buildsItsOwnPage) {
       fail("--compare and --evidence build their own page, so they take no <url>");
@@ -405,13 +475,26 @@ async function main() {
     if (buildsItsOwnPage) {
       url = `file://${cardPath}`;
     } else {
-      url = normalizeUrl(positionals[0]!);
+      const positional = positionals[0]!;
+      if (positional.startsWith("/")) {
+        if (profile.url == null) {
+          fail("quick capture needs a saved url; run: browsershot config set url <url>");
+        }
+        try {
+          url = resolveQuickUrl(profile.url, positional);
+        } catch (e) {
+          fail((e as Error).message);
+        }
+      } else {
+        url = normalizeUrl(positional);
+      }
     }
+    const json = Boolean(values.json) || profile.json === true;
 
     if (values.stdout && values.gif != null) {
       fail("--stdout cannot be combined with --gif");
     }
-    if (values.json && values.stdout) {
+    if (json && values.stdout) {
       fail("--json prints one JSON object on stdout; it cannot be combined with --stdout");
     }
     if (values.publish != null && values.stdout) {
@@ -523,18 +606,30 @@ async function main() {
       fullPage = true;
     }
     const headless = !values.headed;
-    const authCredentials = values["auth-credentials"];
-    const authPurpose = values["auth-purpose"];
-    if (authCredentials != null && values.cookies != null) {
-      fail("--auth-credentials and --cookies both choose the jar. Pass one of them.");
+    const verbose = Boolean(values.verbose);
+    const savedAuthUser = values["auth-user"] == null ? profile.authUser : values["auth-user"];
+    const authRequested = Boolean(values.auth) || savedAuthUser != null || values["auth-credentials"] != null;
+    if (values["auth-purpose"]) {
+      fail("--auth-purpose was removed — use --auth-user");
     }
-    if (authCredentials == null && authPurpose != null) {
-      fail("--auth-purpose needs --auth-credentials");
+    if (authRequested && values.cookies != null) {
+      fail("--cookies and --auth/--auth-user/--auth-credentials both choose the jar. Pass one of them.");
     }
     let cookiesPath = values.cookies;
-    if (authCredentials != null) {
+    if (authRequested) {
       try {
-        cookiesPath = resolveAuthJar({ credentialsPath: authCredentials, purpose: authPurpose });
+        let credentialsPath = values["auth-credentials"];
+        if (credentialsPath == null) {
+          credentialsPath = discoverAuthCredentials(process.cwd());
+          process.stderr.write(`browsershot: using ${credentialsPath}\n`);
+        }
+        const user = savedAuthUser;
+        process.stderr.write(`browsershot: authenticating as ${user ?? "the default user"} (authstate ensure)\n`);
+        cookiesPath = await resolveAuthJar(
+          { credentialsPath: credentialsPath as string, user: user as string | undefined },
+          undefined,
+          (chunk) => process.stderr.write(chunk),
+        );
       } catch (e) {
         if (e instanceof AuthStateFailure) {
           fail(e.message, e.code);
@@ -547,7 +642,7 @@ async function main() {
     }
     const allowBlank = Boolean(values["allow-blank"]);
     const allowStatus = Boolean(values["allow-status"]);
-    const expectText = values["expect-text"];
+    const expectText = values["expect-text"] == null ? profile.expectText : values["expect-text"];
 
     let inspect: InspectOptions | undefined;
     if (values.inspect != null) {
@@ -576,9 +671,36 @@ async function main() {
       fail((e as Error).message);
     }
 
-    const options = { url, width, height, fullPage, headless, scale, waitUntil, delayMs, timeoutMs, cookiesPath, htmlClass, allowBlank, inspect, inspectFooter, actions, mocks, allowStatus, expectText };
+    const options = {
+      url,
+      width,
+      height,
+      fullPage,
+      headless,
+      scale,
+      waitUntil,
+      delayMs,
+      timeoutMs,
+      cookiesPath,
+      htmlClass,
+      allowBlank,
+      inspect,
+      inspectFooter,
+      actions,
+      mocks,
+      allowStatus,
+      expectText,
+      verbose,
+      log: (message: string) => process.stderr.write(`browsershot: ${message}\n`),
+    };
 
     let out = defaultOutput();
+    if (projectRoot !== "") {
+      out = join(profilePaths(projectRoot).captures, `${timestamp()}.png`);
+    }
+    if (profile.output != null) {
+      out = profile.output;
+    }
     if (values.output != null) {
       out = values.output;
     }
@@ -607,7 +729,7 @@ async function main() {
       success.sha256 = sha256Hex(readFileSync(gifOut));
       process.stderr.write(`browsershot: wrote ${gifOut} (${bytes} bytes)\n`);
       process.stderr.write(`browsershot: sha256 ${success.sha256}\n`);
-      if (!values.json) {
+      if (!json) {
         process.stdout.write(`${gifOut}\n`);
       }
       if (values.publish != null) {
@@ -618,7 +740,7 @@ async function main() {
         try {
           const published = publish({ filePath: gifOut, dest: values.publish, isGif: true, size: publishSize, label: gifLabel });
           success.publishedUrl = published.url;
-          if (!values.json) {
+          if (!json) {
             process.stdout.write(`${published.markdown}\n`);
           }
         } catch (e) {
@@ -626,8 +748,11 @@ async function main() {
           fail(failure.message, failure.code);
         }
       }
-      if (values.json) {
+      if (json) {
         process.stdout.write(`${JSON.stringify(success)}\n`);
+      }
+      if (profile.autoOpen === true || values["auto-open"]) {
+        openFile(gifOut, (message) => process.stderr.write(`browsershot: warning: ${message}\n`));
       }
     } else {
       let png: Uint8Array = new Uint8Array();
@@ -654,7 +779,7 @@ async function main() {
         success.sha256 = sha256Hex(png);
         process.stderr.write(`browsershot: wrote ${out} (${png.length} bytes)\n`);
         process.stderr.write(`browsershot: sha256 ${success.sha256}\n`);
-        if (!values.json) {
+        if (!json) {
           process.stdout.write(`${out}\n`);
         }
         if (inspected != null) {
@@ -681,7 +806,7 @@ async function main() {
           try {
             const published = publish({ filePath: out, dest: values.publish, isGif: false, size: publishSize, label: pngLabel });
             success.publishedUrl = published.url;
-            if (!values.json) {
+            if (!json) {
               process.stdout.write(`${published.markdown}\n`);
             }
           } catch (e) {
@@ -689,8 +814,11 @@ async function main() {
             fail(failure.message, failure.code);
           }
         }
-        if (values.json) {
+        if (json) {
           process.stdout.write(`${JSON.stringify(success)}\n`);
+        }
+        if (profile.autoOpen === true || values["auto-open"]) {
+          openFile(out, (message) => process.stderr.write(`browsershot: warning: ${message}\n`));
         }
       }
     }

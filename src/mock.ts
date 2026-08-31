@@ -134,9 +134,10 @@ async function fulfilMerge(route: Route, mock: Mock): Promise<void> {
   await route.fulfill({ status, contentType: JSON_CONTENT_TYPE, body });
 }
 
-export async function applyMocks(context: BrowserContext, mocks: Mock[]): Promise<void> {
+export async function applyMocks(context: BrowserContext, mocks: Mock[], onHit?: (message: string) => void): Promise<void> {
   for (const mock of mocks) {
     await context.route(mock.url, async (route) => {
+      onHit?.(`mock hit: ${route.request().url()} (${mock.kind})`);
       if ("redirect" === mock.kind) {
         await fulfilRedirect(route, mock);
       } else if ("json" === mock.kind) {

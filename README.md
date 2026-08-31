@@ -55,7 +55,7 @@ curl -fsSL https://raw.githubusercontent.com/fayez-nazzal/browsershot/main/scrip
 
 It asks which agents to set up. It defaults to Claude Code.
 
-Your agent never handles a password. For a signed in capture it passes `--auth-credentials <path>`, plus `--auth-purpose <name>` when the credentials file holds more than one account, and `browsershot` gets the jar from `authstate`.
+Your agent never handles a password. For a signed in capture it passes `--auth`, and `browsershot` discovers `.testing-credentials.yaml`, calls `authstate` for the jar, and captures signed in. Add `--auth-user <name>` when the credentials file holds more than one account, or `--auth-credentials <path>` to point at a file the walk-up will not find.
 
 For scripts and CI, use the non-interactive form:
 
@@ -97,10 +97,56 @@ Full recipes live in [`AGENTS.md`](AGENTS.md).
 Two things are optional.
 
 - For an authenticated capture, pass a Playwright storage state file with `--cookies <path>`. `browsershot` never logs in and never stores a password.
-- Or pass `--auth-credentials <path>` with a credentials YAML and let `browsershot` call `authstate` for you. It runs `authstate ensure --credentials <path>`, reads the `path` field of the JSON envelope, and uses that jar. Add `--auth-purpose <name>` to pick one account out of the file. `--auth-credentials` and `--cookies` together exit `2`, and a missing `authstate` binary exits `3`.
+- Or pass `--auth` and let `browsershot` do it all: it discovers `.testing-credentials.yaml` by walking up from the working directory, runs `authstate ensure` for the file's default user, reads the `path` field of the JSON envelope, and uses that jar. Add `--auth-user <name>` to pick one account out of the file, or `--auth-credentials <path>` to name the file explicitly. Any `--auth*` flag with `--cookies` exits `2`, and a missing `authstate` binary exits `3`.
 - For `--publish`, configure an `rclone` remote once with `rclone config`. Then pass a destination such as `--publish "gdrive:shots/my-repo/my-branch/"`.
 
 Keep any local credentials file out of the repo. `.gitignore` already covers `.env` and `.testing-credentials.yaml`.
+
+### Project profile
+
+Save the URL and common capture settings in the nearest Git project:
+
+```sh
+browsershot config set url "http://localhost:8990/a/app?organizationId=8#/workspaces/8"
+browsershot config set auth-user test-user
+browsershot config set expect-text DocClever
+browsershot config set output /tmp/docclever.png
+browsershot config set json
+browsershot config set auto-open
+```
+
+Then capture a route with a short command:
+
+```sh
+browsershot /clients-needing-attention
+```
+
+The route is added inside the saved hash route. The query string stays before the hash. Without a hash route the path is added to the URL pathname. A capture without a saved URL must use a full URL.
+
+Saved values apply after built-in defaults. Explicit flags override them for one run. Without a saved or explicit output path the PNG goes to `.browsershot/captures/<timestamp>.png`.
+
+Inspect or remove saved values:
+
+```sh
+  browsershot config show
+  browsershot config path
+  browsershot config unset url
+  browsershot config unset auth-user
+browsershot config unset expect-text
+browsershot config unset output
+browsershot config unset json
+browsershot config unset auto-open
+```
+
+The profile is local and is added to `.git/info/exclude` automatically. It never stores passwords or auth jars.
+
+To verify captures end to end with a local sample page:
+
+```sh
+bun test test/cli-e2e.test.ts
+```
+
+The test checks viewport and full-page PNG dimensions. It checks the PNG signature. It checks the output hash. It checks rendered heading text.
 
 ## Daily use
 
@@ -118,8 +164,16 @@ Capture a page behind a login in one command:
 
 ```sh
 browsershot https://example.com/account \
-  --auth-credentials .testing-credentials.yaml \
-  --auth-purpose basic-user \
+  --auth \
+  --inspect '[data-testid="account-name"]'
+```
+
+Or pin a specific account from the file:
+
+```sh
+browsershot https://example.com/account \
+  --auth \
+  --auth-user basic-user \
   --inspect '[data-testid="account-name"]'
 ```
 

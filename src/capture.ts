@@ -30,6 +30,8 @@ export interface CaptureOptions {
   mocks?: Mock[];
   allowStatus?: boolean;
   expectText?: string;
+  log?: (message: string) => void;
+  verbose?: boolean;
 }
 
 export interface CaptureResult {
@@ -82,12 +84,13 @@ interface Session {
   browser: Browser | null;
 }
 
-async function launch(headless: boolean): Promise<Browser> {
+async function launch(headless: boolean, onLaunch?: (message: string) => void): Promise<Browser> {
   let browser: Browser;
   try {
+    onLaunch?.("launching chrome headless");
     browser = await chromium.launch({ headless, channel: "chrome" });
   } catch {
-    process.stderr.write("browsershot: warning: Google Chrome unavailable, falling back to bundled Chromium\n");
+    onLaunch?.("chrome unavailable — launching bundled chromium headless");
     try {
       browser = await chromium.launch({ headless });
     } catch (e) {
@@ -103,7 +106,7 @@ async function launch(headless: boolean): Promise<Browser> {
 }
 
 async function openSession(o: CaptureOptions, extra: Record<string, unknown> = {}): Promise<Session> {
-  const browser = await launch(o.headless);
+  const browser = await launch(o.headless, o.log);
   const viewport = { width: o.width, height: o.height };
   const contextOptions: Record<string, unknown> = { viewport, deviceScaleFactor: o.scale, ...extra };
   if (o.cookiesPath != null) {
@@ -112,7 +115,11 @@ async function openSession(o: CaptureOptions, extra: Record<string, unknown> = {
   const context = await browser.newContext(contextOptions);
   const session: Session = { context, browser };
   if (o.mocks != null) {
-    await applyMocks(session.context, o.mocks);
+    await applyMocks(
+      session.context,
+      o.mocks,
+      o.verbose === true ? (message) => process.stderr.write(`browsershot: ${message}\n`) : undefined,
+    );
   }
   return session;
 }
@@ -182,7 +189,11 @@ async function applyHtmlClass(page: Page, o: CaptureOptions): Promise<void> {
 }
 
 export async function preparePage(page: Page, o: CaptureOptions): Promise<void> {
+  o.log?.(`navigating ${o.url} (wait: ${o.waitUntil}, timeout ${Math.round(o.timeoutMs / 1000)}s)`);
+  const started = Date.now();
   const response = await page.goto(o.url, { waitUntil: o.waitUntil, timeout: o.timeoutMs });
+  o.log?.(`page loaded in ${((Date.now() - started) / 1000).toFixed(1)}s`);
+  o.log?.("waiting for render…");
   await waitForRender(page, o);
   await applyHtmlClass(page, o);
   if (o.delayMs > 0) {
@@ -202,7 +213,7 @@ export async function preparePage(page: Page, o: CaptureOptions): Promise<void> 
 
 async function playActions(page: Page, o: CaptureOptions): Promise<void> {
   if (o.actions != null) {
-    await runActions(page, o.actions, o.timeoutMs);
+    await runActions(page, o.actions, o.timeoutMs, o.verbose === true ? (message) => process.stderr.write(`browsershot: ${message}\n`) : undefined);
   }
 }
 
@@ -212,11 +223,22 @@ export async function capture(o: CaptureOptions): Promise<CaptureResult> {
   let inspected: ElementRecord | null = null;
   try {
     const page = await session.context.newPage();
+    if (o.verbose === true) {
+      page.on("console", (msg) => {
+        if (msg.type() === "error") {
+          process.stderr.write(`browsershot: [console.error] ${msg.text()}\n`);
+        }
+      });
+      page.on("requestfailed", (request) => {
+        process.stderr.write(`browsershot: [request failed] ${request.url()} (${request.failure()?.errorText ?? "unknown"})\n`);
+      });
+    }
     await preparePage(page, o);
     await playActions(page, o);
     if (o.inspect != null) {
       inspected = await inspectElement(page, o.inspect, o.inspectFooter);
     }
+    o.log?.("capturing…");
     png = await page.screenshot({ fullPage: o.fullPage });
   } finally {
     await closeSession(session);

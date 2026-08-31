@@ -22,7 +22,7 @@ the recipes, and the traps that waste a run.
 - One capture, one claim. If you cannot name what the final frame proves, do not
   ship it.
 - Never log in from `browsershot`. It has no login flag. Prefer
-  `--auth-credentials <yaml>`, which gets the jar from `authstate` for you.
+  `--auth`, which gets the jar from `authstate` for you.
 - Always pipe `authstate` through `jq -r .path` when you resolve the jar
   yourself. It prints a JSON envelope on stdout, not a bare path.
 - Compare the `sha256` field across runs to catch two captures that are secretly
@@ -86,22 +86,32 @@ tool `authstate`. Use the one flag form.
 
 ```sh
 browsershot "https://example.com/account" \
-  --auth-credentials .testing-credentials.yaml \
-  --auth-purpose basic-user \
+  --auth \
+  --auth-user basic-user \
   --inspect '[data-testid="account-name"]' \
   -o account.png \
   --json
 ```
 
-`browsershot` runs `authstate ensure --credentials .testing-credentials.yaml
---purpose basic-user`, reads the `path` field out of the JSON envelope, and uses
-that jar. Drop `--auth-purpose` when the credentials file holds one account.
+`--auth` discovers `.testing-credentials.yaml` by walking up from the working
+directory, runs `authstate ensure`, and uses the jar. Drop `--auth-user` when the
+credentials file's `default` entry is the one you want. When the credentials file
+lives somewhere the walk-up will not find, point at it directly.
+
+```sh
+browsershot "https://example.com/account" \
+  --auth-credentials ./config/testing-creds.yaml \
+  --auth-user basic-user \
+  --inspect '[data-testid="account-name"]' \
+  -o account.png \
+  --json
+```
 
 The manual form is still there when you want the jar path in your own hands, for
 example to reuse it across several tools.
 
 ```sh
-jar=$(authstate ensure --credentials .testing-credentials.yaml --purpose basic-user | jq -r .path)
+jar=$(authstate ensure --user basic-user | jq -r .path)
 browsershot "https://example.com/account" \
   --cookies "$jar" \
   --inspect '[data-testid="account-name"]' \
@@ -109,16 +119,9 @@ browsershot "https://example.com/account" \
   --json
 ```
 
-Ran the `authstate` half here. Real stdout, trimmed:
-
-```json
-{"tool":"authstate","command":"path","ok":true,"status":"reused","path":"/Users/macbook/.authstate/example-app--basic-user.json","exit_code":0}
-```
-
 - A jar is a plain file. Any number of captures can read the same one at once.
 - Different accounts means different jars, not a shared one.
-- `--auth-credentials` together with `--cookies` exits `2`. Both pick the jar.
-- `--auth-purpose` without `--auth-credentials` exits `2`.
+- Any of `--auth` / `--auth-user` / `--auth-credentials` together with `--cookies` exits `2`. Both pick the jar.
 - A missing `authstate` binary exits `3` and tells you to install it.
 - A failed login exits `1` and repeats the `authstate` exit code and its `reason`.
 - A missing jar path exits `2` with `--cookies file not found: <path>`.
@@ -175,19 +178,22 @@ Exit codes seen in the source and reproduced by running the binary.
 | `0` | Capture written | `browsershot: wrote /tmp/p.png (71625 bytes)` |
 | `1` | The run failed a guard or the capture threw | `--expect-text "Nope" was not found on the page` |
 | `2` | Usage error, including an unknown flag or a missing jar | `--cookies file not found: /tmp/nope.json` |
+| `3` | Environment problem: `authstate` missing or no credentials file found | `no .testing-credentials.yaml found from ... up to ...` |
 | `5` | The PNG was written but the inspect sidecar could not be | `wrote <png>, but could not write <json>` |
 | `6` | The file was written but `--publish` failed | `wrote <path>, but publish failed: ...` |
 
-`src/exit-codes.ts` also defines `3` and `4`. Nothing in the CLI raises them
-today, so do not branch on them.
+`src/exit-codes.ts` also defines `4`. Nothing in the CLI raises it today, so do
+not branch on it.
 
 ## Pitfalls
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `Unknown option '--user-data-dir'` or `'--login'` | Neither flag exists. Older notes claimed they did | Use `--auth-credentials`, or `--cookies` with an `authstate` jar |
-| `jar` contains JSON, not a path | `authstate` prints a JSON envelope on stdout | Use `--auth-credentials`, or pipe it: `authstate ensure ... \| jq -r .path` |
+| `Unknown option '--user-data-dir'` or `'--login'` | Neither flag exists. Older notes claimed they did | Use `--auth`, or `--cookies` with an `authstate` jar |
+| `jar` contains JSON, not a path | `authstate` prints a JSON envelope on stdout | Use `--auth`, or pipe it: `authstate ensure ... \| jq -r .path` |
+| Exit `2` with `--auth-purpose was removed` | The old flag is gone | Use `--auth-user` |
 | `authstate is not installed` | The binary is not on `PATH` | Install `authstate`, then re-run |
+| Exit `3` with `no .testing-credentials.yaml found` | `--auth` could not discover the file, or it does not exist | Pass `--auth-credentials <path>` |
 | Exit `1` with `page still looks blank after 10s` | An app that renders late, or a genuinely sparse page | Raise `--delay`, or pass `--allow-blank` when a sparse page is the point |
 | Exit `1` with `--expect-text ... was not found` | The flow did not reach the page you expected | Probe with `--inspect` and read the sidecar |
 | Exit `2` on `--json --stdout` | Both want stdout | Pick one. Use `--json` for scripts |

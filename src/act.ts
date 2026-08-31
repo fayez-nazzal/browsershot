@@ -47,8 +47,9 @@ export function parseActions(raw: string): Action[] {
   return actions;
 }
 
-export async function runActions(page: Page, actions: Action[], timeoutMs: number): Promise<void> {
+export async function runActions(page: Page, actions: Action[], timeoutMs: number, onStep?: (message: string) => void): Promise<void> {
   for (const action of actions) {
+    onStep?.(`act: ${action.kind}:${action.value}`);
     if ("wait" === action.kind) {
       await page.waitForTimeout(Number(action.value));
       continue;
