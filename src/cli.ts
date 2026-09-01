@@ -2,8 +2,7 @@
 
 import { parseArgs } from "node:util";
 import packageJson from "../package.json";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { capture, captureGif, parseHtmlClassFlag, type HtmlClassChange, type WaitUntil } from "./capture.ts";
@@ -16,8 +15,9 @@ import type { InspectOptions } from "./inspect.ts";
 import { buildCardHtml, buildSide, parsePair, DEFAULT_LABELS } from "./card.ts";
 import { EXIT_FAILED, EXIT_OK, EXIT_USAGE, EXIT_WRITE_ERROR, publishFailure, type ExitCode } from "./exit-codes.ts";
 import { resolveAuthJar, AuthStateFailure, discoverAuthCredentials } from "./authstate.ts";
-import { addProfileExclude, findProjectRoot, profilePaths, readProfile, resolveQuickUrl, setProfileValue, unsetProfileValue } from "./profile.ts";
+import { profilePaths, readProfile, resolveQuickUrl, setProfileValue, unsetProfileValue } from "./profile.ts";
 import { openFile } from "./open.ts";
+import { createRunTmpDir, ensureWorkspace, removeRunTmpDir } from "./workspace.ts";
 
 export const VERSION = packageJson.version;
 
@@ -45,7 +45,7 @@ USAGE
   Google Chrome first and fall back to bundled Chromium.
 
 OPTIONS
-  -o, --output <path>   Output PNG path (default: ~/browsershot/<timestamp>.png)
+  -o, --output <path>   Output PNG path (default: .browsershot/captures/<timestamp>.png)
       --width <px>      Viewport width  (default: 1440)
       --height <px>     Viewport height (default: 900)
       --size <WxH>      Shorthand for both, e.g. 1920x1080 (overrides all sizing flags)
@@ -224,10 +224,6 @@ export function timestamp(): string {
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
 }
 
-export function defaultOutput(): string {
-  return join(homedir(), "browsershot", `${timestamp()}.png`);
-}
-
 export function sha256Hex(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
@@ -339,12 +335,7 @@ function fail(msg: string, code: ExitCode = EXIT_USAGE): never {
 }
 
 function runConfigCommand(args: string[]): never {
-  let root = "";
-  try {
-    root = findProjectRoot();
-  } catch (e) {
-    fail((e as Error).message);
-  }
+  const root = process.cwd();
   const command = args[0];
   try {
     if (command === "set") {
@@ -396,15 +387,15 @@ async function main() {
     const showingEvidence = values.evidence != null;
     const buildsItsOwnPage = comparing || showingEvidence;
     const quickCapture = !buildsItsOwnPage && positionals[0] != null && positionals[0].startsWith("/");
+    ensureWorkspace();
     if (positionals[0] === "config") {
       runConfigCommand(positionals.slice(1));
     }
-    let projectRoot = "";
+    const runTmp = createRunTmpDir();
+    process.on("exit", () => removeRunTmpDir(runTmp));
     let profile: ReturnType<typeof readProfile> = {};
     try {
-      projectRoot = findProjectRoot();
-      profile = readProfile(projectRoot);
-      addProfileExclude(projectRoot);
+      profile = readProfile();
     } catch (e) {
       if (quickCapture) {
         fail((e as Error).message);
@@ -455,7 +446,7 @@ async function main() {
           before: buildSide(pair.before, labels.before, attr),
           after: buildSide(pair.after, labels.after, attr),
         });
-        cardPath = join(mkdtempSync(join(tmpdir(), "browsershot-card-")), "card.html");
+        cardPath = join(runTmp, "card.html");
         writeFileSync(cardPath, html);
       } catch (e) {
         fail((e as Error).message);
@@ -465,7 +456,7 @@ async function main() {
     if (showingEvidence) {
       try {
         const html = buildEvidenceHtml(readEvidenceSpec(values.evidence as string));
-        cardPath = join(mkdtempSync(join(tmpdir(), "browsershot-evidence-")), "evidence.html");
+        cardPath = join(runTmp, "evidence.html");
         writeFileSync(cardPath, html);
       } catch (e) {
         fail((e as Error).message);
@@ -695,10 +686,7 @@ async function main() {
       log: (message: string) => process.stderr.write(`browsershot: ${message}\n`),
     };
 
-    let out = defaultOutput();
-    if (projectRoot !== "") {
-      out = join(profilePaths(projectRoot).captures, `${timestamp()}.png`);
-    }
+    let out = join(profilePaths().captures, `${timestamp()}.png`);
     if (profile.output != null) {
       out = profile.output;
     }
@@ -719,7 +707,7 @@ async function main() {
       const gifOut = gifOutputPath(out);
       mkdirSync(dirname(gifOut), { recursive: true });
       try {
-        await captureGif(options, gifSeconds * 1000, gifOut);
+        await captureGif(options, gifSeconds * 1000, gifOut, join(runTmp, "gif"));
       } catch (e) {
         fail((e as Error).message, EXIT_FAILED);
       }
@@ -766,7 +754,7 @@ async function main() {
         fail((e as Error).message, EXIT_FAILED);
       }
       try {
-        png = drawAnnotations(png, boxes, markers);
+        png = drawAnnotations(png, boxes, markers, runTmp);
       } catch (e) {
         fail((e as Error).message);
       }

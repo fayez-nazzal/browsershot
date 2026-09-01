@@ -4,9 +4,9 @@ import { runActions, type Action } from "./act.ts";
 import { applyMocks, type Mock } from "./mock.ts";
 import { inspectElement, type ElementRecord, type InspectOptions } from "./inspect.ts";
 import { assertLanding } from "./landing.ts";
-import { homedir, tmpdir } from "node:os";
+import { homedir } from "node:os";
 import { join } from "node:path";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { withScope } from "./session.ts";
 
 export type WaitUntil = "load" | "domcontentloaded" | "networkidle" | "commit";
@@ -302,9 +302,7 @@ export interface CaptureGifDeps {
   closeSession: typeof closeSession;
   preparePage: typeof preparePage;
   playActions: typeof playActions;
-  mkdtemp: () => string;
-  rmDir: (path: string) => void;
-  convert: (videoPath: string, gifPath: string) => void;
+  convert: (videoPath: string, gifPath: string, workDir: string) => void;
 }
 
 const defaultCaptureGifDeps: CaptureGifDeps = {
@@ -312,8 +310,6 @@ const defaultCaptureGifDeps: CaptureGifDeps = {
   closeSession,
   preparePage,
   playActions,
-  mkdtemp: () => mkdtempSync(join(tmpdir(), "browsershot-video-")),
-  rmDir: (path) => rmSync(path, { recursive: true, force: true }),
   convert: convertVideoToGif,
 };
 
@@ -321,28 +317,26 @@ export async function captureGif(
   o: CaptureOptions,
   durationMs: number,
   gifPath: string,
+  workDir: string,
   deps: CaptureGifDeps = defaultCaptureGifDeps,
 ): Promise<void> {
-  const videoDir = deps.mkdtemp();
-  try {
-    const videoPath = await withScope(async (scope) => {
-      const size = { width: o.width, height: o.height };
-      const session = await deps.openSession(o, defaultCaptureDeps, { recordVideo: { dir: videoDir, size } });
-      scope.use({ close: () => deps.closeSession(session) });
-      const page = await session.context.newPage();
-      await deps.preparePage(page, o);
-      await deps.playActions(page, o);
-      await page.waitForTimeout(durationMs);
-      const video = page.video();
-      if (video == null) {
-        throw new Error("video recording produced no file");
-      }
-      return await video.path();
-    });
-    deps.convert(videoPath, gifPath);
-  } finally {
-    deps.rmDir(videoDir);
-  }
+  const videoDir = join(workDir, "video");
+  mkdirSync(videoDir, { recursive: true });
+  const videoPath = await withScope(async (scope) => {
+    const size = { width: o.width, height: o.height };
+    const session = await deps.openSession(o, defaultCaptureDeps, { recordVideo: { dir: videoDir, size } });
+    scope.use({ close: () => deps.closeSession(session) });
+    const page = await session.context.newPage();
+    await deps.preparePage(page, o);
+    await deps.playActions(page, o);
+    await page.waitForTimeout(durationMs);
+    const video = page.video();
+    if (video == null) {
+      throw new Error("video recording produced no file");
+    }
+    return await video.path();
+  });
+  deps.convert(videoPath, gifPath, workDir);
 }
 
 const GIF_FPS = 12;
@@ -397,8 +391,9 @@ export function ffmpegPath(): string {
   return result;
 }
 
-function convertVideoToGif(videoPath: string, gifPath: string): void {
-  const framesDir = mkdtempSync(join(tmpdir(), "browsershot-frames-"));
+function convertVideoToGif(videoPath: string, gifPath: string, workDir: string): void {
+  const framesDir = join(workDir, "frames");
+  mkdirSync(framesDir, { recursive: true });
   try {
     extractFrames(videoPath, framesDir);
     assembleGif(framesDir, gifPath);

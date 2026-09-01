@@ -1,7 +1,6 @@
 // Draw box and marker annotations onto PNG bytes via macOS Cocoa/CoreGraphics
 // through JXA (osascript), no extra dependencies.
 
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
 
@@ -164,12 +163,12 @@ export function annotationSpec(boxes: BoxAnnotation[], markers: MarkerAnnotation
   return JSON.stringify({ boxStroke: BOX_STROKE_WIDTH, markerRadius: MARKER_RADIUS, markerOutline: MARKER_OUTLINE_WIDTH, boxes: flatBoxes, markers: flatMarkers });
 }
 
-export function drawAnnotations(png: Uint8Array, boxes: BoxAnnotation[], markers: MarkerAnnotation[]): Uint8Array {
+export function drawAnnotations(png: Uint8Array, boxes: BoxAnnotation[], markers: MarkerAnnotation[], workDir: string): Uint8Array {
   let result = png;
   if (boxes.length > 0 || markers.length > 0) {
     const stamp = `${process.pid}-${Date.now()}`;
-    const src = join(tmpdir(), `annotate-${stamp}-src.png`);
-    const dst = join(tmpdir(), `annotate-${stamp}-dst.png`);
+    const src = join(workDir, `annotate-${stamp}-src.png`);
+    const dst = join(workDir, `annotate-${stamp}-dst.png`);
     writeFileSync(src, png);
     try {
       const proc = Bun.spawnSync(["osascript", "-l", "JavaScript", "-e", DRAW_ANNOTATIONS_JXA, src, dst, annotationSpec(boxes, markers)]);

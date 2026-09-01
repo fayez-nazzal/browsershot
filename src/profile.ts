@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname, join, parse, resolve } from "node:path";
+import { join } from "node:path";
 
 export interface ProfileConfig {
   url?: string;
@@ -18,27 +18,7 @@ interface ProfilePaths {
 
 const CONFIG_KEYS = new Set(["url", "auth-user", "expect-text", "output", "json", "auto-open"]);
 
-export function findProjectRoot(start = process.cwd()): string {
-  let current = resolve(start);
-  let result = "";
-  while (true) {
-    if (existsSync(join(current, ".git"))) {
-      result = current;
-      break;
-    }
-    const parent = parse(current).dir;
-    if (parent === current) {
-      break;
-    }
-    current = parent;
-  }
-  if (result === "") {
-    throw new Error(`no project root found from ${start}`);
-  }
-  return result;
-}
-
-export function profilePaths(root = findProjectRoot()): ProfilePaths {
+export function profilePaths(root = process.cwd()): ProfilePaths {
   const directory = join(root, ".browsershot");
   return { directory, config: join(directory, "config.json"), captures: join(directory, "captures") };
 }
@@ -64,7 +44,7 @@ function validateConfig(config: unknown): ProfileConfig {
   return result;
 }
 
-export function readProfile(root = findProjectRoot()): ProfileConfig {
+export function readProfile(root = process.cwd()): ProfileConfig {
   const path = profilePaths(root).config;
   let result: ProfileConfig = {};
   if (existsSync(path)) {
@@ -83,29 +63,9 @@ export function readProfile(root = findProjectRoot()): ProfileConfig {
 export function writeProfile(root: string, config: ProfileConfig): void {
   const paths = profilePaths(root);
   mkdirSync(paths.directory, { recursive: true });
-  addProfileExclude(root);
   const temporary = `${paths.config}.${process.pid}.tmp`;
   writeFileSync(temporary, `${JSON.stringify(validateConfig(config), null, 2)}\n`);
   renameSync(temporary, paths.config);
-}
-
-export function addProfileExclude(root: string): void {
-  const gitPath = join(root, ".git");
-  if (!existsSync(gitPath)) {
-    throw new Error(`no .git directory found at ${root}`);
-  }
-  const exclude = join(gitPath, "info", "exclude");
-  mkdirSync(dirname(exclude), { recursive: true });
-  const current = existsSync(exclude) ? readFileSync(exclude, "utf8") : "";
-  const lines = current.split("\n");
-  if (!lines.includes(".browsershot/")) {
-    let next = current;
-    if (next !== "" && !next.endsWith("\n")) {
-      next = `${next}\n`;
-    }
-    next = `${next}.browsershot/\n`;
-    writeFileSync(exclude, next);
-  }
 }
 
 export function setProfileValue(root: string, name: string, rawValue?: string): ProfileConfig {
