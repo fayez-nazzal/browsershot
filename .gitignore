@@ -19,3 +19,8 @@ build/
 .env.*
 .testing-credentials.yaml
 .browsershot-profiles/
+
+# local tooling, never commit
+AGENTS.override.md
+.npmrc
+package-lock.json
