@@ -14,8 +14,6 @@ It is made to be called by an AI coding agent, not typed by a human. The contrac
 - Records a short flow to a GIF with `--gif <seconds>`.
 - Drives the page before capture with `--act`, so you can shoot an open menu or a focused control.
 - Highlights one element with `--inspect` and writes its role, name and ARIA state to a JSON sidecar.
-- Builds a before and after card from two PNGs with `--compare`.
-- Builds a before and after page from plain data with `--evidence`.
 - Fakes a network response with `--mock`, so a flow can reach a state the server will not serve yet.
 - Uploads the result and prints a public link with `--publish`.
 
@@ -25,7 +23,7 @@ The working directory's `.browsershot/` folder is the only thing `browsershot` r
 
 - Every run creates `.browsershot/` where you invoked the command.
 - Saved settings live in `.browsershot/config.json`, captures land in `.browsershot/captures/`.
-- Transient work (compare and evidence pages, GIF video and frames, annotation scratch files) runs inside `.browsershot/tmp/` and is removed when the run exits.
+- Transient work (GIF video and frames, annotation scratch files) runs inside `.browsershot/tmp/` and is removed when the run exits.
 - A generated `.browsershot/.gitignore` makes git ignore the whole directory, so nothing else in your repo is ever touched.
 - Nothing lands in your home directory. Delete `.browsershot/` to reset the tool completely.
 
@@ -197,15 +195,6 @@ browsershot https://example.com/dashboard \
 ```
 
 Steps are separated by `;` and each one is `kind:value`. The kinds are `focus`, `click`, `press`, `type` and `wait`.
-
-Build a before and after card:
-
-```sh
-browsershot --compare before.png,after.png \
-  --compare-labels "main,my-branch" \
-  --compare-title "menu button missing aria-expanded" \
-  -o card.png
-```
 
 Every `--inspect` run prints a one line summary to stderr and writes a JSON sidecar:
 

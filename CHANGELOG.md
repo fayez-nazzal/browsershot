@@ -12,7 +12,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - One-flag authenticated captures: `--auth` discovers `.testing-credentials.yaml`, asks `authstate` for the jar and captures signed in. `--auth-user` picks an account, `--auth-credentials` names the file explicitly.
 - `--verbose` for detailed Playwright progress on stderr: phase timings, failed requests, console errors and mock hits.
 - Headless captures run on the bundled Chromium headless shell first and report the selected runtime; installed Google Chrome stays as the fallback.
-- `.browsershot/tmp/` as the home of all transient work: compare and evidence HTML, GIF video and frame files, annotation scratch PNGs. Each run gets its own directory, removed when the run exits. Run directories left behind by a killed process are swept on the next run once they are older than a day.
+- `.browsershot/tmp/` as the home of all transient work: GIF video and frame files, annotation scratch PNGs. Each run gets its own directory, removed when the run exits. Run directories left behind by a killed process are swept on the next run once they are older than a day.
 - A generated `.browsershot/.gitignore`, so git ignores the whole directory without browsershot ever touching `.git/info/exclude`.
 
 ### Changed
@@ -23,5 +23,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Removed
 
+- The `--compare` before and after card builder and the `--evidence` before and after page builder. Assert on state with `--inspect` plus `--inspect-json`, and share shots with `--publish`.
 - `findProjectRoot` and its `no project root found` error path.
 - Every write to `.git/info/exclude`. An existing `.browsershot/` line there is harmless and can stay.

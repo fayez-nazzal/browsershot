@@ -8,11 +8,9 @@ import { createHash } from "node:crypto";
 import { capture, captureGif, parseHtmlClassFlag, type HtmlClassChange, type WaitUntil } from "./capture.ts";
 import { drawAnnotations, parseBoxFlag, parseMarkerFlag, type BoxAnnotation, type MarkerAnnotation } from "./annotate.ts";
 import { publish, labelFromPath, DEFAULT_EMBED_WIDTH } from "./publish.ts";
-import { buildEvidenceHtml, readEvidenceSpec } from "./evidence.ts";
 import { parseActions, type Action } from "./act.ts";
 import { parseMocks, type Mock } from "./mock.ts";
 import type { InspectOptions } from "./inspect.ts";
-import { buildCardHtml, buildSide, parsePair, DEFAULT_LABELS } from "./card.ts";
 import { EXIT_FAILED, EXIT_OK, EXIT_USAGE, EXIT_WRITE_ERROR, publishFailure, type ExitCode } from "./exit-codes.ts";
 import { resolveAuthJar, AuthStateFailure, discoverAuthCredentials } from "./authstate.ts";
 import { profilePaths, readProfile, resolveQuickUrl, setProfileValue, unsetProfileValue } from "./profile.ts";
@@ -22,10 +20,6 @@ import { createRunTmpDir, ensureWorkspace, removeRunTmpDir } from "./workspace.t
 export const VERSION = packageJson.version;
 
 const WAIT_EVENTS = ["load", "domcontentloaded", "networkidle", "commit"] as const;
-
-export const COMPARE_WIDTH = 2000;
-export const COMPARE_HEIGHT = 1200;
-export const EVIDENCE_WIDTH = 1100;
 
 export const PRESETS: Record<string, { width: number; height: number }> = {};
 PRESETS.desktop = { width: 1920, height: 1080 };
@@ -126,23 +120,6 @@ OPTIONS
                         output path with a .json extension. Read this instead of
                         the PNG to assert on state without opening an image.
       --inspect-note <text>  Extra line printed at the bottom of the panel
-      --compare <before.png,after.png>  Build a two column before and after card
-                        from two PNGs and capture it. Needs no <url>. When a
-                        sidecar .json sits next to a PNG (as --inspect-json
-                        writes), its role, name and state table is shown under
-                        that side. Implies --full-page.
-      --compare-labels <a,b>   Column labels (default: ${DEFAULT_LABELS.before},${DEFAULT_LABELS.after})
-      --compare-title <text>   Card heading
-      --compare-chips <a,b,..> Small pills under the heading, comma separated
-      --evidence <spec.json>  Build a before and after page from DATA and capture it.
-                        Needs no <url>. Use this when the evidence is text rather
-                        than two screenshots: what went in, what came back before,
-                        what came back after, each with a plain-English reading, so
-                        a reviewer never has to read a terminal dump. Implies
-                        --full-page. The file holds: title, optional step and lede,
-                        an input block (heading, meta pairs, text, chips, hidden),
-                        before and after blocks (label, note, output, badge, plain,
-                        outcome) and an optional result line.
       --box <x,y,w,h[,color]>  Draw a rectangle outline on the PNG at those pixel
                         coordinates (top-left origin, post-scale); repeatable
       --marker <x,y[,color]>   Draw a point marker (filled dot) on the PNG at
@@ -198,11 +175,6 @@ function parse() {
       "inspect-attr": { type: "string" },
       "inspect-json": { type: "string" },
       "inspect-note": { type: "string" },
-      compare: { type: "string" },
-      evidence: { type: "string" },
-      "compare-labels": { type: "string" },
-      "compare-title": { type: "string" },
-      "compare-chips": { type: "string" },
       box: { type: "string", multiple: true, default: [] },
       marker: { type: "string", multiple: true, default: [] },
       stdout: { type: "boolean", default: false },
@@ -383,10 +355,7 @@ async function main() {
   } else if (values.version) {
     process.stdout.write(`${VERSION}\n`);
   } else {
-    const comparing = values.compare != null;
-    const showingEvidence = values.evidence != null;
-    const buildsItsOwnPage = comparing || showingEvidence;
-    const quickCapture = !buildsItsOwnPage && positionals[0] != null && positionals[0].startsWith("/");
+    const quickCapture = positionals[0] != null && positionals[0].startsWith("/");
     ensureWorkspace();
     if (positionals[0] === "config") {
       runConfigCommand(positionals.slice(1));
@@ -401,72 +370,18 @@ async function main() {
         fail((e as Error).message);
       }
     }
-    if (positionals.length === 0 && !buildsItsOwnPage) {
+    if (positionals.length === 0) {
       fail("missing <url> or <quick-path> (try: browsershot --help)");
-    }
-    if (positionals.length > 0 && buildsItsOwnPage) {
-      fail("--compare and --evidence build their own page, so they take no <url>");
-    }
-    if (comparing && showingEvidence) {
-      fail("--compare and --evidence are two ways to build the same page; pick one");
-    }
-    if (showingEvidence && (values.gif != null || values.inspect != null)) {
-      fail("--evidence cannot be combined with --gif or --inspect");
     }
     if (positionals.length > 1) {
       fail(`unexpected extra arguments: ${positionals.slice(1).join(" ")}`);
-    }
-    if (comparing && (values.gif != null || values.inspect != null)) {
-      fail("--compare cannot be combined with --gif or --inspect");
     }
     if (values.inspect != null && values.gif != null) {
       fail("--inspect works with PNG output only, not --gif");
     }
 
-    let cardPath = "";
-    if (comparing) {
-      try {
-        const pair = parsePair(values.compare as string, "compare");
-        let labels = DEFAULT_LABELS;
-        if (values["compare-labels"] != null) {
-          labels = parsePair(values["compare-labels"], "compare-labels");
-        }
-        let title = "before and after";
-        if (values["compare-title"] != null) {
-          title = values["compare-title"];
-        }
-        let chips: string[] = [];
-        if (values["compare-chips"] != null) {
-          chips = values["compare-chips"].split(",").map((chip) => chip.trim()).filter((chip) => chip !== "");
-        }
-        const attr = values["inspect-attr"];
-        const html = buildCardHtml({
-          title,
-          chips,
-          before: buildSide(pair.before, labels.before, attr),
-          after: buildSide(pair.after, labels.after, attr),
-        });
-        cardPath = join(runTmp, "card.html");
-        writeFileSync(cardPath, html);
-      } catch (e) {
-        fail((e as Error).message);
-      }
-    }
-
-    if (showingEvidence) {
-      try {
-        const html = buildEvidenceHtml(readEvidenceSpec(values.evidence as string));
-        cardPath = join(runTmp, "evidence.html");
-        writeFileSync(cardPath, html);
-      } catch (e) {
-        fail((e as Error).message);
-      }
-    }
-
     let url = "";
-    if (buildsItsOwnPage) {
-      url = `file://${cardPath}`;
-    } else {
+    {
       const positional = positionals[0]!;
       if (positional.startsWith("/")) {
         if (profile.url == null) {
@@ -520,14 +435,6 @@ async function main() {
 
     let width = 1440;
     let height = 900;
-    if (comparing) {
-      width = COMPARE_WIDTH;
-      height = COMPARE_HEIGHT;
-    }
-    if (showingEvidence) {
-      width = EVIDENCE_WIDTH;
-      height = COMPARE_HEIGHT;
-    }
     if (values.preset != null) {
       const preset = PRESETS[values.preset];
       if (preset == null) {
@@ -594,9 +501,6 @@ async function main() {
     }
 
     let fullPage = Boolean(values["full-page"]);
-    if (buildsItsOwnPage) {
-      fullPage = true;
-    }
     const headless = !values.headed;
     const verbose = Boolean(values.verbose);
     const savedAuthUser = values["auth-user"] == null ? profile.authUser : values["auth-user"];
