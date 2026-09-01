@@ -41,11 +41,11 @@ test("captures a sample HTML page and validates viewport and full page screensho
 
   const viewport = Bun.spawnSync(
     ["bun", CLI, `file://${html}`, "--width", "640", "--height", "480", "--scale", "1", "--expect-text", "Quick Capture Sample", "--inspect", "h1", "--inspect-json", inspectOutput, "--output", viewportOutput, "--json"],
-    { cwd: REPO_ROOT },
+    { cwd: dir },
   );
   const fullPage = Bun.spawnSync(
     ["bun", CLI, `file://${html}`, "--width", "640", "--height", "480", "--scale", "1", "--full-page", "--expect-text", "Quick Capture Sample", "--output", fullPageOutput, "--json"],
-    { cwd: REPO_ROOT },
+    { cwd: dir },
   );
 
   expect(viewport.exitCode).toBe(0);

@@ -1,14 +1,12 @@
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync } from "node:fs";
+import { mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const CLI = join(import.meta.dir, "..", "src", "cli.ts");
 
 function scratch(): string {
-  const root = mkdtempSync(join(tmpdir(), "browsershot-profile-cli-test-"));
-  mkdirSync(join(root, ".git"));
-  return root;
+  return mkdtempSync(join(tmpdir(), "browsershot-profile-cli-test-"));
 }
 
 function run(root: string, ...args: string[]) {

@@ -14,6 +14,8 @@ const BASE_OPTIONS: CaptureOptions = {
   allowBlank: true,
 };
 
+const WORK_DIR = "/tmp/browsershot-gif-work";
+
 function fakeDeps(failingStep: "preparePage" | "playActions" | "videoPath"): { deps: CaptureGifDeps; openCount: () => number } {
   let openCount = 0;
   const fakeBrowser = { close: async () => { openCount = openCount - 1; } };
@@ -53,31 +55,30 @@ function fakeDeps(failingStep: "preparePage" | "playActions" | "videoPath"): { d
         throw new Error("playActions blew up");
       }
     },
-    mkdtemp: () => "/tmp/browsershot-video-fake",
-    rmDir: () => {},
+    convert: () => {},
   };
   return { deps, openCount: () => openCount };
 }
 
 test("a rejecting preparePage still closes the opened browser", async () => {
   const { deps, openCount } = fakeDeps("preparePage");
-  await expect(captureGif(BASE_OPTIONS, 100, "/tmp/out.gif", deps)).rejects.toThrow("preparePage blew up");
+  await expect(captureGif(BASE_OPTIONS, 100, "/tmp/out.gif", WORK_DIR, deps)).rejects.toThrow("preparePage blew up");
   expect(openCount()).toBe(0);
 });
 
 test("a rejecting playActions still closes the opened browser", async () => {
   const { deps, openCount } = fakeDeps("playActions");
-  await expect(captureGif(BASE_OPTIONS, 100, "/tmp/out.gif", deps)).rejects.toThrow("playActions blew up");
+  await expect(captureGif(BASE_OPTIONS, 100, "/tmp/out.gif", WORK_DIR, deps)).rejects.toThrow("playActions blew up");
   expect(openCount()).toBe(0);
 });
 
 test("a rejecting video.path still closes the opened browser", async () => {
   const { deps, openCount } = fakeDeps("videoPath");
-  await expect(captureGif(BASE_OPTIONS, 100, "/tmp/out.gif", deps)).rejects.toThrow("video path blew up");
+  await expect(captureGif(BASE_OPTIONS, 100, "/tmp/out.gif", WORK_DIR, deps)).rejects.toThrow("video path blew up");
   expect(openCount()).toBe(0);
 });
 
-test("the video is converted after the session closes and before the directory is removed", async () => {
+test("the video is converted after the session closes", async () => {
   const order: string[] = [];
   const fakeVideo = { path: async () => "/tmp/does-not-matter.webm" };
   const fakePage = { waitForTimeout: async () => {}, video: () => fakeVideo };
@@ -87,10 +88,8 @@ test("the video is converted after the session closes and before the directory i
     closeSession: async () => { order.push("closeSession"); },
     preparePage: async () => {},
     playActions: async () => {},
-    mkdtemp: () => "/tmp/browsershot-video-fake",
-    rmDir: () => { order.push("rmDir"); },
     convert: () => { order.push("convert"); },
   };
-  await captureGif(BASE_OPTIONS, 10, "/tmp/out.gif", deps);
-  expect(order).toEqual(["closeSession", "convert", "rmDir"]);
+  await captureGif(BASE_OPTIONS, 10, "/tmp/out.gif", WORK_DIR, deps);
+  expect(order).toEqual(["closeSession", "convert"]);
 });

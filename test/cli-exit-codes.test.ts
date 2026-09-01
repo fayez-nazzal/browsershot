@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const REPO_ROOT = join(import.meta.dir, "..");
+const CLI = join(REPO_ROOT, "src", "cli.ts");
 
 const PNG_BYTES = Buffer.from(
   "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c6360000002000100ffff03000006000557bfabd40000000049454e44ae426082",
@@ -15,7 +16,8 @@ function scratch(): string {
 }
 
 test("a usage error exits with code 2", () => {
-  const proc = Bun.spawnSync(["bun", "src/cli.ts"], { cwd: REPO_ROOT });
+  const dir = scratch();
+  const proc = Bun.spawnSync(["bun", CLI], { cwd: dir });
   expect(proc.exitCode).toBe(2);
 });
 
@@ -30,7 +32,7 @@ test("a publish failure after a successful write exits 6 and keeps the artifact 
   const proc = Bun.spawnSync(
     [
       "bun",
-      "src/cli.ts",
+      CLI,
       "--compare",
       `${before},${after}`,
       "--output",
@@ -38,7 +40,7 @@ test("a publish failure after a successful write exits 6 and keeps the artifact 
       "--publish",
       "browsershot-nonexistent-remote-xyz:some/path/",
     ],
-    { cwd: REPO_ROOT },
+    { cwd: dir },
   );
 
   expect(proc.exitCode).toBe(6);

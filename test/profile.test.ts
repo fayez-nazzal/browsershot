@@ -1,9 +1,8 @@
 import { expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  addProfileExclude,
   profilePaths,
   readProfile,
   resolveQuickUrl,
@@ -15,14 +14,8 @@ function scratch(): string {
   return mkdtempSync(join(tmpdir(), "browsershot-profile-test-"));
 }
 
-function gitProject(): string {
-  const root = scratch();
-  mkdirSync(join(root, ".git"));
-  return root;
-}
-
 test("profile write and read preserve saved settings", () => {
-  const root = gitProject();
+  const root = scratch();
   const config: ProfileConfig = {
     url: "http://localhost:8990/app#/workspaces/8",
     authUser: "test-user",
@@ -49,16 +42,6 @@ test("quick paths append to the pathname without a hash route", () => {
   expect(resolveQuickUrl("http://localhost:8990/app?organizationId=8", "clients")).toBe(
     "http://localhost:8990/app/clients?organizationId=8",
   );
-});
-
-test("git exclude update is idempotent", () => {
-  const root = gitProject();
-
-  addProfileExclude(root);
-  addProfileExclude(root);
-
-  const exclude = readFileSync(join(root, ".git", "info", "exclude"), "utf8");
-  expect(exclude.match(/^\.browsershot\/$/gm)).toHaveLength(1);
 });
 
 test("invalid quick paths are rejected", () => {

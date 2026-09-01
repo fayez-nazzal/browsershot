@@ -1,9 +1,16 @@
 import { expect, test } from "bun:test";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveAuthJar, discoverAuthCredentials, runAuthState, type AuthStateDeps, type AuthStateRun } from "../src/authstate.ts";
 import { EXIT_ENVIRONMENT, EXIT_FAILED } from "../src/exit-codes.ts";
 
 const REPO_ROOT = join(import.meta.dir, "..");
+const CLI = join(REPO_ROOT, "src", "cli.ts");
+
+function scratch(): string {
+  return mkdtempSync(join(tmpdir(), "browsershot-authstate-test-"));
+}
 
 function deps(installed: boolean, run: AuthStateRun, calls: string[][] = []): AuthStateDeps {
   return {
@@ -129,14 +136,14 @@ test("discoverAuthCredentials fails with a named error when nothing is found", (
 });
 
 test("--cookies together with --auth exits 2", () => {
-  const proc = Bun.spawnSync(["bun", "src/cli.ts", "https://example.com", "--cookies", "jar.json", "--auth"], { cwd: REPO_ROOT });
+  const proc = Bun.spawnSync(["bun", CLI, "https://example.com", "--cookies", "jar.json", "--auth"], { cwd: scratch() });
   const stderr = new TextDecoder().decode(proc.stderr);
   expect(proc.exitCode).toBe(2);
   expect(stderr).toContain("--cookies");
 });
 
 test("--auth-purpose is a tombstone naming --auth-user", () => {
-  const proc = Bun.spawnSync(["bun", "src/cli.ts", "https://example.com", "--auth-purpose", "basic-user"], { cwd: REPO_ROOT });
+  const proc = Bun.spawnSync(["bun", CLI, "https://example.com", "--auth-purpose", "basic-user"], { cwd: scratch() });
   const stderr = new TextDecoder().decode(proc.stderr);
   expect(proc.exitCode).toBe(2);
   expect(stderr).toContain("--auth-purpose");

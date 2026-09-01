@@ -42,7 +42,7 @@ test("--json prints exactly one JSON object on stdout and keeps human lines on s
   const pair = writePair(dir);
   const out = join(dir, "shot.png");
 
-  const proc = Bun.spawnSync(["bun", CLI, "--compare", `${pair.before},${pair.after}`, "--output", out, "--json"], { cwd: REPO_ROOT });
+  const proc = Bun.spawnSync(["bun", CLI, "--compare", `${pair.before},${pair.after}`, "--output", out, "--json"], { cwd: dir });
 
   expect(proc.exitCode).toBe(0);
   const stdout = proc.stdout.toString();
@@ -75,7 +75,7 @@ test("--json cannot be combined with --stdout", () => {
   const dir = scratch();
   const pair = writePair(dir);
 
-  const proc = Bun.spawnSync(["bun", CLI, "--compare", `${pair.before},${pair.after}`, "--json", "--stdout"], { cwd: REPO_ROOT });
+  const proc = Bun.spawnSync(["bun", CLI, "--compare", `${pair.before},${pair.after}`, "--json", "--stdout"], { cwd: dir });
 
   expect(proc.exitCode).toBe(2);
 });

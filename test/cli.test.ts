@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { timestamp, normalizeUrl, parseSize, defaultOutput, PRESETS, gifOutputPath, sha256Hex, normalizeArgv } from "../src/cli.ts";
+import { timestamp, normalizeUrl, parseSize, PRESETS, gifOutputPath, sha256Hex, normalizeArgv } from "../src/cli.ts";
 
 test("timestamp matches YYYYMMDD-HHMMSS", () => {
   expect(timestamp()).toMatch(/^\d{8}-\d{6}$/);
@@ -27,12 +27,6 @@ test("parseSize rejects malformed input", () => {
   expect(parseSize("1920*1080")).toBeNull();
   expect(parseSize("axb")).toBeNull();
   expect(parseSize("")).toBeNull();
-});
-
-test("defaultOutput is under ~/browsershot and ends in a timestamped .png", () => {
-  const out = defaultOutput();
-  expect(out).toContain("/browsershot/");
-  expect(out).toMatch(/\/\d{8}-\d{6}\.png$/);
 });
 
 test("PRESETS cover desktop, laptop, and phone with exact sizes", () => {
