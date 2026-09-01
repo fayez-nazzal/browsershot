@@ -19,6 +19,16 @@ It is made to be called by an AI coding agent, not typed by a human. The contrac
 - Fakes a network response with `--mock`, so a flow can reach a state the server will not serve yet.
 - Uploads the result and prints a public link with `--publish`.
 
+## Stateless by design
+
+The working directory's `.browsershot/` folder is the only thing `browsershot` reads and writes.
+
+- Every run creates `.browsershot/` where you invoked the command.
+- Saved settings live in `.browsershot/config.json`, captures land in `.browsershot/captures/`.
+- Transient work (compare and evidence pages, GIF video and frames, annotation scratch files) runs inside `.browsershot/tmp/` and is removed when the run exits.
+- A generated `.browsershot/.gitignore` makes git ignore the whole directory, so nothing else in your repo is ever touched.
+- Nothing lands in your home directory. Delete `.browsershot/` to reset the tool completely.
+
 ## Requirements
 
 - [Bun](https://bun.sh) to run the CLI.
@@ -105,7 +115,7 @@ Keep any local credentials file out of the repo. `.gitignore` already covers `.e
 
 ### Project profile
 
-Save the URL and common capture settings in the nearest Git project:
+Save the URL and common capture settings in `.browsershot/` in your working directory:
 
 ```sh
 browsershot config set url "http://localhost:8990/a/app?organizationId=8#/workspaces/8"
@@ -139,7 +149,7 @@ browsershot config unset json
 browsershot config unset auto-open
 ```
 
-The profile is local and is added to `.git/info/exclude` automatically. It never stores passwords or auth jars.
+The profile is local to `.browsershot/` and a generated `.browsershot/.gitignore` makes git ignore the whole directory. It never stores passwords or auth jars.
 
 To verify captures end to end with a local sample page:
 
@@ -152,7 +162,7 @@ The test checks viewport and full-page PNG dimensions. It checks the PNG signatu
 ## Daily use
 
 ```sh
-browsershot example.com                          # -> ~/browsershot/<timestamp>.png
+browsershot example.com                          # -> .browsershot/captures/<timestamp>.png
 browsershot https://example.com -o shot.png      # custom path
 browsershot example.com --preset phone           # 390x844 viewport
 browsershot example.com --size 1920x1080         # custom viewport
@@ -214,11 +224,11 @@ Pass `--json` to get one JSON object on stdout instead:
 
 ```json
 {
-  "outputPath": "/Users/you/browsershot/20260815-101500.png",
+  "outputPath": "/Users/you/dev/my-app/.browsershot/captures/20260815-101500.png",
   "bytes": 38835,
   "sha256": "a1b2c3...",
   "gifPath": null,
-  "inspectJsonPath": "/Users/you/browsershot/20260815-101500.json",
+  "inspectJsonPath": "/Users/you/dev/my-app/.browsershot/captures/20260815-101500.json",
   "inspected": {
     "selector": "#t",
     "tagName": "button",
