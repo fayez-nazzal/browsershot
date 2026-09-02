@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { remoteName, normalizeDest, basename, labelFromPath, extractDriveFileId, embedUrl, pngMarkdown, gifInstruction, rcloneRemoteConfigured, imageHeadersOk, DEFAULT_EMBED_WIDTH } from "../src/publish.ts";
+import { remoteName, normalizeDest, basename, labelFromPath, extractDriveFileId, embedUrl, pngMarkdown, rcloneRemoteConfigured, imageHeadersOk, DEFAULT_EMBED_WIDTH } from "../src/publish.ts";
 
 test("remoteName reads the segment before the first colon", () => {
   expect(remoteName("gdrive:PR-Shots/repo/branch/")).toBe("gdrive");
@@ -44,12 +44,6 @@ test("embedUrl builds the direct high-res googleusercontent form", () => {
 test("pngMarkdown emits a single image line", () => {
   expect(pngMarkdown("home", "https://lh3.googleusercontent.com/d/ABC=w2560")).toBe("![home](https://lh3.googleusercontent.com/d/ABC=w2560)");
 });
-
-test("gifInstruction names the local file and the archive link", () => {
-  const line = gifInstruction("/Users/x/browsershot/flow.gif", "https://drive.google.com/open?id=ABC");
-  expect(line).toBe("GIF: drag /Users/x/browsershot/flow.gif into the PR description editor to embed the animation; Drive archive: https://drive.google.com/open?id=ABC.");
-});
-
 test("rcloneRemoteConfigured matches an exact remote line", () => {
   expect(rcloneRemoteConfigured("gdrive", "gdrive:\ndropbox:\n")).toBe(true);
   expect(rcloneRemoteConfigured("gdrive", "dropbox:\n")).toBe(false);

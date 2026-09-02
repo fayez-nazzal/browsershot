@@ -1,7 +1,7 @@
 {
   "name": "browsershot",
-  "version": "1.2.0",
-  "description": "CLI for AI coding agents: capture a web page to a PNG or GIF via your installed Chrome (Playwright), with a JSON contract to assert on.",
+  "version": "1.0.0",
+  "description": "CLI for AI coding agents: capture a web page to a PNG via the Playwright Chromium headless shell, with a JSON contract to assert on.",
   "author": {
     "name": "Fayez Nazzal"
   },

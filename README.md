@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/fayez-nazzal/browsershot/actions/workflows/ci.yml/badge.svg)](https://github.com/fayez-nazzal/browsershot/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-`browsershot` captures a web page to a PNG or an animated GIF through Playwright. Headless captures run on the bundled Chromium headless shell first and fall back to installed Google Chrome when the shell cannot launch.
+`browsershot` captures a web page to a PNG through Playwright. Every run loads the page headless in the bundled Chromium headless shell.
 
 It is built for producing review evidence. You point it at a URL, optionally drive the page with a few steps, and it writes an image plus a machine readable summary you can assert on.
 
@@ -11,7 +11,6 @@ It is made to be called by an AI coding agent, not typed by a human. The contrac
 ## What it does
 
 - Captures a page to a PNG at retina scale by default.
-- Records a short flow to a GIF with `--gif <seconds>`.
 - Drives the page before capture with `--act`, so you can shoot an open menu or a focused control.
 - Highlights one element with `--inspect` and writes its role, name and ARIA state to a JSON sidecar.
 - Fakes a network response with `--mock`, so a flow can reach a state the server will not serve yet.
@@ -23,16 +22,14 @@ The working directory's `.browsershot/` folder is the only thing `browsershot` r
 
 - Every run creates `.browsershot/` where you invoked the command.
 - Saved settings live in `.browsershot/config.json`, captures land in `.browsershot/captures/`.
-- Transient work (GIF video and frames, annotation scratch files) runs inside `.browsershot/tmp/` and is removed when the run exits.
+- Transient work (annotation scratch files) runs inside `.browsershot/tmp/` and is removed when the run exits.
 - A generated `.browsershot/.gitignore` makes git ignore the whole directory, so nothing else in your repo is ever touched.
 - Nothing lands in your home directory. Delete `.browsershot/` to reset the tool completely.
 
 ## Requirements
 
 - [Bun](https://bun.sh) to run the CLI.
-- The Playwright Chromium headless shell from `bun playwright install chromium`. Headless captures run on it first.
-- Google Chrome as the fallback. A failed headless shell launch retries once with Chrome, and `--headed` captures use Chrome first.
-- macOS only for GIF assembly. `--box` and `--marker` work everywhere.
+- The Playwright Chromium headless shell from `bun playwright install chromium`. Every capture runs on it.
 - [`rclone`](https://rclone.org) only if you use `--publish`.
 
 ## Install
@@ -165,7 +162,6 @@ browsershot https://example.com -o shot.png      # custom path
 browsershot example.com --preset phone           # 390x844 viewport
 browsershot example.com --size 1920x1080         # custom viewport
 browsershot example.com --full-page              # whole scrollable page
-browsershot example.com --gif 5                  # 5 second recording -> shot.gif
 browsershot example.com --stdout > shot.png
 ```
 
@@ -216,7 +212,6 @@ Pass `--json` to get one JSON object on stdout instead:
   "outputPath": "/Users/you/dev/my-app/.browsershot/captures/20260815-101500.png",
   "bytes": 38835,
   "sha256": "a1b2c3...",
-  "gifPath": null,
   "inspectJsonPath": "/Users/you/dev/my-app/.browsershot/captures/20260815-101500.json",
   "inspected": {
     "selector": "#t",
@@ -232,7 +227,6 @@ Pass `--json` to get one JSON object on stdout instead:
 }
 ```
 
-- `gifPath` is set only with `--gif`.
 - `inspectJsonPath` and `inspected` are set only with `--inspect`.
 - `publishedUrl` is set only with `--publish`.
 - Fields that do not apply to the run are `null`.
@@ -243,7 +237,7 @@ Run `browsershot --help` for the full flag list.
 
 ## Notes for agents
 
-`AGENTS.md` holds the recipes: how to probe a flow cheaply before recording it, how to script a login off camera, how to pick the right kind of mock, and the traps that waste a run.
+`AGENTS.md` holds the recipes: how to probe a flow cheaply before capturing it, how to script a login, how to pick the right kind of mock, and the traps that waste a run.
 
 Ready made mock specs live in `examples/`.
 

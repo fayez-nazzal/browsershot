@@ -10,7 +10,6 @@ build/
 
 # captures and their sidecars
 *.png
-*.gif
 *.webm
 *.json.tmp
 

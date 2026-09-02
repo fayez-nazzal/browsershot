@@ -33,7 +33,6 @@ test("emptySuccess carries every success key, all null", () => {
     "outputPath",
     "bytes",
     "sha256",
-    "gifPath",
     "inspectJsonPath",
     "inspected",
     "publishedUrl",
@@ -55,7 +54,6 @@ test("--json prints exactly one JSON object on stdout and keeps human lines on s
   expect(parsed.outputPath).toBe(out);
   expect(parsed.bytes).toBeGreaterThan(0);
   expect(parsed.sha256).toMatch(/^[0-9a-f]{64}$/);
-  expect(parsed.gifPath).toBeNull();
   expect(parsed.inspectJsonPath).toBeNull();
   expect(parsed.inspected).toBeNull();
   expect(parsed.publishedUrl).toBeNull();

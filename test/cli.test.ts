@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { timestamp, normalizeUrl, parseSize, PRESETS, gifOutputPath, sha256Hex, normalizeArgv } from "../src/cli.ts";
+import { timestamp, normalizeUrl, parseSize, PRESETS, sha256Hex, normalizeArgv } from "../src/cli.ts";
 
 test("timestamp matches YYYYMMDD-HHMMSS", () => {
   expect(timestamp()).toMatch(/^\d{8}-\d{6}$/);
@@ -35,17 +35,6 @@ test("PRESETS cover desktop, laptop, and phone with exact sizes", () => {
   expect(PRESETS.phone).toEqual({ width: 390, height: 844 });
   expect(Object.keys(PRESETS)).toEqual(["desktop", "laptop", "phone"]);
 });
-
-test("gifOutputPath swaps a .png extension for .gif", () => {
-  expect(gifOutputPath("/a/b/shot.png")).toBe("/a/b/shot.gif");
-  expect(gifOutputPath("/a/b/shot.PNG")).toBe("/a/b/shot.gif");
-});
-
-test("gifOutputPath appends .gif when there is no .png extension", () => {
-  expect(gifOutputPath("/a/b/shot")).toBe("/a/b/shot.gif");
-  expect(gifOutputPath("/a/b/shot.jpeg")).toBe("/a/b/shot.jpeg.gif");
-});
-
 test("sha256Hex hashes bytes to lowercase hex", () => {
   const empty = sha256Hex(new Uint8Array());
   expect(empty).toBe("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");

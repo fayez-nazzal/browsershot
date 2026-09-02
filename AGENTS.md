@@ -1,7 +1,7 @@
 # browsershot for agents
 
 `browsershot` is built to be called by an AI coding agent, not typed by a human.
-It drives a real browser, captures a page to a PNG or a GIF, and hands back a
+It drives a real browser, captures a page to a PNG, and hands back a
 machine readable summary. The reason to call it instead of writing throwaway
 Playwright is `--json` plus `--inspect-json`. You get `outputPath`, `bytes`,
 `sha256` and the inspected element as text, so you can prove what the page did
@@ -12,14 +12,14 @@ the recipes, and the traps that waste a run.
 
 ## Golden rules
 
-- Never read the PNG or the GIF into your context. Read `--json` stdout and the
+- Never read the PNG into your context. Read `--json` stdout and the
   `--inspect-json` sidecar instead.
 - Always pass `--json` when a script consumes the run. Without it the absolute
   output path is the first stdout line and everything else is on stderr.
 - Never combine `--json` with `--stdout`. That exits `2`.
 - Assert on text before you believe a run. A file is written even when the flow
   went nowhere.
-- One capture, one claim. If you cannot name what the final frame proves, do not
+- One capture, one claim. If you cannot name what the capture proves, do not
   ship it.
 - Never log in from `browsershot`. It has no login flag. Prefer
   `--auth`, which gets the jar from `authstate` for you.
@@ -31,7 +31,7 @@ the recipes, and the traps that waste a run.
 
 ## Recipes
 
-### Probe a flow cheaply before you record it
+### Probe a flow cheaply before you capture it
 
 Proves the `--act` chain lands on the page you think it does, in text, for the
 price of one screenshot.
@@ -127,29 +127,6 @@ browsershot "https://example.com/account" \
 - A missing jar path exits `2` with `--cookies file not found: <path>`.
 - Prove the session took. Inspect for something only a signed in page shows.
 
-### Record a flow as a GIF
-
-A GIF that opens on the page you want to prove is a weak GIF. It shows a blank
-frame then the answer. Record the journey instead.
-
-```sh
-browsershot "https://example.com" \
-  --act 'wait:2000;click:#some-tab;wait:2500;click:a[data-cta];wait:12000' \
-  --gif 20 \
-  -o flow.png \
-  --json
-```
-
-- Start at the entry point a person would start at, not the destination.
-- `--gif <seconds>` must cover the sum of every `wait:` in the chain plus the
-  page loads. Short by a second and the ending is missing.
-- Keep it under about 20 seconds.
-- The GIF path lands in `gifPath`, next to `-o` with a `.gif` extension.
-- Probe with `--inspect` first. A recording is expensive and you cannot check it
-  by looking.
-
-Verified on this machine. A 3 second capture of a local page wrote a 47,705 byte GIF and exited `0`.
-
 ## Reading the output
 
 Without `--json` the absolute output path is the first stdout line. Everything
@@ -158,14 +135,13 @@ human readable goes to stderr.
 With `--json` stdout is exactly one JSON object. Real captured output:
 
 ```json
-{"outputPath":"/tmp/p.png","bytes":71625,"sha256":"231ae8c5acd05c7c17e6a959f2370da91c92acda677b0afc44ab614a67884c1f","gifPath":null,"inspectJsonPath":"/tmp/p.json","inspected":{"selector":"#t","tagName":"button","role":"button (implicit)","name":"Menu","description":"","attributes":{"id":"t","aria-expanded":"true"},"outerHTML":"<button id=\"t\" aria-expanded=\"true\">Menu</button>","displayHTML":"<button id=\"t\" aria-expanded=\"true\">Menu</button>","box":{"x":8,"y":66.4375,"width":49.359375,"height":21}},"publishedUrl":null}
+{"outputPath":"/tmp/p.png","bytes":71625,"sha256":"231ae8c5acd05c7c17e6a959f2370da91c92acda677b0afc44ab614a67884c1f","inspectJsonPath":"/tmp/p.json","inspected":{"selector":"#t","tagName":"button","role":"button (implicit)","name":"Menu","description":"","attributes":{"id":"t","aria-expanded":"true"},"outerHTML":"<button id=\"t\" aria-expanded=\"true\">Menu</button>","displayHTML":"<button id=\"t\" aria-expanded=\"true\">Menu</button>","box":{"x":8,"y":66.4375,"width":49.359375,"height":21}},"publishedUrl":null}
 ```
 
 Fields worth asserting on.
 
 - `outputPath` is the absolute PNG path.
 - `sha256` identifies the image without opening it.
-- `gifPath` is set only with `--gif`, otherwise `null`.
 - `inspectJsonPath` and `inspected` are set only with `--inspect`, otherwise `null`.
 - `inspected.attributes` carries the ARIA state. This is your assertion target.
 - `inspected.box` of `0,0,0,0` means the element is hidden.
@@ -198,7 +174,7 @@ not branch on it.
 | Exit `1` with `--expect-text ... was not found` | The flow did not reach the page you expected | Probe with `--inspect` and read the sidecar |
 | Exit `2` on `--json --stdout` | Both want stdout | Pick one. Use `--json` for scripts |
 | Run hangs until timeout | `--wait networkidle` on a page with polling, ads or analytics | Use `--wait load` with `--delay 3000` |
-| Recording ends on the page you started on | The link had `target="_blank"`, so the new tab was never recorded | Click a link that stays in the tab, or navigate straight to the destination |
+| The shot shows the page you started on | The link had `target="_blank"`, so the new tab was never captured | Click a link that stays in the tab, or navigate straight to the destination |
 | Click times out on a visible looking control | It sits in a hidden tab or accordion pane | `--inspect` it first. A `box` of `0,0,0,0` means hidden. Open the parent first |
 | A form step times out | The field is not on that page. Sign up and sign in pages differ | Probe for the field before typing into it |
 | The capture shows a login screen | The jar expired | Re-run `authstate ensure`, which relogs in when the jar is dead |
@@ -252,8 +228,8 @@ Getting this backwards produces a run that looks fine and proves nothing.
 
 Report paths and a verdict. Never image bytes.
 
-- Give the absolute `outputPath`, and `gifPath` when there is one.
-- State what the final frame shows, quoting the text you asserted on from
+- Give the absolute `outputPath`.
+- State what the capture shows, quoting the text you asserted on from
   `inspected`, and say how you verified it.
 - Give the exit code when the run failed.
 - If a mock was used, say so and say which branch it stood in for.

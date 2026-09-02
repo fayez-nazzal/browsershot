@@ -5,7 +5,7 @@ import packageJson from "../package.json";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { createHash } from "node:crypto";
-import { capture, captureGif, parseHtmlClassFlag, type HtmlClassChange, type WaitUntil } from "./capture.ts";
+import { capture, parseHtmlClassFlag, type HtmlClassChange, type WaitUntil } from "./capture.ts";
 import { drawAnnotations, parseBoxFlag, parseMarkerFlag, type BoxAnnotation, type MarkerAnnotation } from "./annotate.ts";
 import { publish, labelFromPath, DEFAULT_EMBED_WIDTH } from "./publish.ts";
 import { parseActions, type Action } from "./act.ts";
@@ -34,9 +34,7 @@ USAGE
   browsershot <quick-path> [options]
 
   Loads <url> headless in the bundled Chromium headless shell and saves a
-  screenshot of the viewport. If the shell cannot launch, it retries once
-  with installed Google Chrome (channel "chrome"). Headed captures use
-  Google Chrome first and fall back to bundled Chromium.
+  screenshot of the viewport.
 
 OPTIONS
   -o, --output <path>   Output PNG path (default: .browsershot/captures/<timestamp>.png)
@@ -45,7 +43,6 @@ OPTIONS
       --size <WxH>      Shorthand for both, e.g. 1920x1080 (overrides all sizing flags)
       --preset <name>   Viewport preset: desktop 1920x1080, laptop 1440x900, phone 390x844
       --full-page       Capture the whole scrollable page (default: viewport only)
-      --headed          Run with a visible window (default: headless)
       --cookies <path>  Playwright storageState jar for an authenticated capture.
                         browsershot never logs in and never stores credentials.
                         Produce the jar with authstate, which owns every login:
@@ -77,7 +74,7 @@ OPTIONS
                         --act 'focus:button[aria-label="More actions"];press:Enter'
                         Runs after the page has rendered and after --html-class,
                         and before --inspect, so --inspect :focus reports where the
-                        keyboard actually landed. With --gif the steps are recorded.
+                        keyboard actually landed.
       --mock <spec.json>  Intercept matching requests before the page sees them, so a
                         flow can be driven into a state the server will not serve
                         yet. The file holds a "mocks" array; every entry has a "url"
@@ -108,7 +105,6 @@ OPTIONS
                         written file also gets a "sha256 <hex>" stderr line so
                         batch captures can spot duplicate outputs without
                         opening the images.
-      --gif <seconds>   Record the page for that long, write a .gif next to the normal output path
       --inspect <selector>  Highlight the first match and draw a DevTools style panel
                         over the shot: its outerHTML on the left, its computed
                         role, name and ARIA state on the right. Long class and
@@ -129,13 +125,11 @@ OPTIONS
                         failed requests, console errors, act step echo, mock hits
       --publish <dest>  Upload the written file to an rclone remote dir (e.g.
                         gdrive:PR-Shots/<repo>/<branch>/), make it public, and
-                        print a PR-ready line to stdout: a high-res inline
-                        Drive image embed for a PNG, or the path + Drive
-                        archive link + drag-in instruction for a --gif
+                        print a PR-ready inline Drive image embed for the PNG.
       --publish-size <px>   Long-edge width for the PNG embed (default: ${DEFAULT_EMBED_WIDTH})
       --publish-label <text>  Alt text for the PNG embed (default: file name)
       --json            Print one JSON object on stdout carrying outputPath, bytes,
-                        sha256, gifPath, inspectJsonPath, inspected and publishedUrl.
+                        sha256, inspectJsonPath, inspected and publishedUrl.
                         Human readable lines stay on stderr. Without it the absolute
                         output path is the first stdout line.
       --auto-open       Open the written capture with the platform default app
@@ -153,7 +147,6 @@ function parse() {
       size: { type: "string" },
       preset: { type: "string" },
       "full-page": { type: "boolean", default: false },
-      headed: { type: "boolean", default: false },
       cookies: { type: "string" },
       auth: { type: "boolean", default: false },
       "auth-user": { type: "string" },
@@ -170,7 +163,6 @@ function parse() {
       "allow-blank": { type: "boolean", default: false },
       "allow-status": { type: "boolean", default: false },
       "expect-text": { type: "string" },
-      gif: { type: "string" },
       inspect: { type: "string" },
       "inspect-attr": { type: "string" },
       "inspect-json": { type: "string" },
@@ -204,7 +196,6 @@ export interface SuccessSummary {
   outputPath: string | null;
   bytes: number | null;
   sha256: string | null;
-  gifPath: string | null;
   inspectJsonPath: string | null;
   inspected: unknown;
   publishedUrl: string | null;
@@ -215,7 +206,6 @@ export function emptySuccess(): SuccessSummary {
     outputPath: null,
     bytes: null,
     sha256: null,
-    gifPath: null,
     inspectJsonPath: null,
     inspected: null,
     publishedUrl: null,
@@ -257,14 +247,6 @@ export function parseSize(s: string): { width: number; height: number } | null {
   let result: { width: number; height: number } | null = null;
   if (m) {
     result = { width: Number(m[1]), height: Number(m[2]) };
-  }
-  return result;
-}
-
-export function gifOutputPath(pngPath: string): string {
-  let result = `${pngPath}.gif`;
-  if (pngPath.toLowerCase().endsWith(".png")) {
-    result = `${pngPath.slice(0, -4)}.gif`;
   }
   return result;
 }
@@ -376,10 +358,6 @@ async function main() {
     if (positionals.length > 1) {
       fail(`unexpected extra arguments: ${positionals.slice(1).join(" ")}`);
     }
-    if (values.inspect != null && values.gif != null) {
-      fail("--inspect works with PNG output only, not --gif");
-    }
-
     let url = "";
     {
       const positional = positionals[0]!;
@@ -398,9 +376,6 @@ async function main() {
     }
     const json = Boolean(values.json) || profile.json === true;
 
-    if (values.stdout && values.gif != null) {
-      fail("--stdout cannot be combined with --gif");
-    }
     if (json && values.stdout) {
       fail("--json prints one JSON object on stdout; it cannot be combined with --stdout");
     }
@@ -416,10 +391,6 @@ async function main() {
     } catch (e) {
       fail((e as Error).message);
     }
-    if (values.gif != null && (values.box.length > 0 || values.marker.length > 0)) {
-      fail("--box and --marker work with PNG output only, not --gif");
-    }
-
     const boxes: BoxAnnotation[] = [];
     const markers: MarkerAnnotation[] = [];
     try {
@@ -501,7 +472,6 @@ async function main() {
     }
 
     let fullPage = Boolean(values["full-page"]);
-    const headless = !values.headed;
     const verbose = Boolean(values.verbose);
     const savedAuthUser = values["auth-user"] == null ? profile.authUser : values["auth-user"];
     const authRequested = Boolean(values.auth) || savedAuthUser != null || values["auth-credentials"] != null;
@@ -572,7 +542,6 @@ async function main() {
       width,
       height,
       fullPage,
-      headless,
       scale,
       waitUntil,
       delayMs,
@@ -601,43 +570,62 @@ async function main() {
 
     const success = emptySuccess();
 
-    if (values.gif != null) {
-      let gifSeconds = 0;
-      try {
-        gifSeconds = intFlag("gif", values.gif);
-      } catch (e) {
-        fail((e as Error).message);
-      }
-      const gifOut = gifOutputPath(out);
-      mkdirSync(dirname(gifOut), { recursive: true });
-      try {
-        await captureGif(options, gifSeconds * 1000, gifOut, join(runTmp, "gif"));
-      } catch (e) {
-        fail((e as Error).message, EXIT_FAILED);
-      }
-      const bytes = statSync(gifOut).size;
-      success.outputPath = gifOut;
-      success.gifPath = gifOut;
-      success.bytes = bytes;
-      success.sha256 = sha256Hex(readFileSync(gifOut));
-      process.stderr.write(`browsershot: wrote ${gifOut} (${bytes} bytes)\n`);
+    let png: Uint8Array = new Uint8Array();
+    let inspected = null;
+    try {
+      const result = await capture(options);
+      png = result.png;
+      inspected = result.inspected;
+    } catch (e) {
+      fail((e as Error).message, EXIT_FAILED);
+    }
+    try {
+      png = drawAnnotations(png, boxes, markers, runTmp);
+    } catch (e) {
+      fail((e as Error).message);
+    }
+    if (values.stdout) {
+      process.stdout.write(png);
+    } else {
+      mkdirSync(dirname(out), { recursive: true });
+      writeFileSync(out, png);
+      success.outputPath = out;
+      success.bytes = png.length;
+      success.sha256 = sha256Hex(png);
+      process.stderr.write(`browsershot: wrote ${out} (${png.length} bytes)\n`);
       process.stderr.write(`browsershot: sha256 ${success.sha256}\n`);
       if (!json) {
-        process.stdout.write(`${gifOut}\n`);
+        process.stdout.write(`${out}\n`);
       }
-      if (values.publish != null) {
-        let gifLabel = labelFromPath(gifOut);
-        if (values["publish-label"] != null) {
-          gifLabel = values["publish-label"];
+      if (inspected != null) {
+        let jsonOut = inspectJsonPath(out);
+        if (values["inspect-json"] != null) {
+          jsonOut = values["inspect-json"];
         }
         try {
-          const published = publish({ filePath: gifOut, dest: values.publish, isGif: true, size: publishSize, label: gifLabel });
+          mkdirSync(dirname(jsonOut), { recursive: true });
+          writeFileSync(jsonOut, `${JSON.stringify(inspected, null, 2)}\n`);
+        } catch (e) {
+          fail(`wrote ${out}, but could not write ${jsonOut}: ${(e as Error).message}`, EXIT_WRITE_ERROR);
+        }
+        success.inspectJsonPath = jsonOut;
+        success.inspected = inspected;
+        process.stderr.write(`browsershot: inspected ${inspectSummary(inspected, values["inspect-attr"])}\n`);
+        process.stderr.write(`browsershot: element json ${jsonOut}\n`);
+      }
+      if (values.publish != null) {
+        let pngLabel = labelFromPath(out);
+        if (values["publish-label"] != null) {
+          pngLabel = values["publish-label"];
+        }
+        try {
+          const published = publish({ filePath: out, dest: values.publish, size: publishSize, label: pngLabel });
           success.publishedUrl = published.url;
           if (!json) {
             process.stdout.write(`${published.markdown}\n`);
           }
         } catch (e) {
-          const failure = publishFailure(gifOut, e as Error);
+          const failure = publishFailure(out, e as Error);
           fail(failure.message, failure.code);
         }
       }
@@ -645,74 +633,7 @@ async function main() {
         process.stdout.write(`${JSON.stringify(success)}\n`);
       }
       if (profile.autoOpen === true || values["auto-open"]) {
-        openFile(gifOut, (message) => process.stderr.write(`browsershot: warning: ${message}\n`));
-      }
-    } else {
-      let png: Uint8Array = new Uint8Array();
-      let inspected = null;
-      try {
-        const result = await capture(options);
-        png = result.png;
-        inspected = result.inspected;
-      } catch (e) {
-        fail((e as Error).message, EXIT_FAILED);
-      }
-      try {
-        png = drawAnnotations(png, boxes, markers, runTmp);
-      } catch (e) {
-        fail((e as Error).message);
-      }
-      if (values.stdout) {
-        process.stdout.write(png);
-      } else {
-        mkdirSync(dirname(out), { recursive: true });
-        writeFileSync(out, png);
-        success.outputPath = out;
-        success.bytes = png.length;
-        success.sha256 = sha256Hex(png);
-        process.stderr.write(`browsershot: wrote ${out} (${png.length} bytes)\n`);
-        process.stderr.write(`browsershot: sha256 ${success.sha256}\n`);
-        if (!json) {
-          process.stdout.write(`${out}\n`);
-        }
-        if (inspected != null) {
-          let jsonOut = inspectJsonPath(out);
-          if (values["inspect-json"] != null) {
-            jsonOut = values["inspect-json"];
-          }
-          try {
-            mkdirSync(dirname(jsonOut), { recursive: true });
-            writeFileSync(jsonOut, `${JSON.stringify(inspected, null, 2)}\n`);
-          } catch (e) {
-            fail(`wrote ${out}, but could not write ${jsonOut}: ${(e as Error).message}`, EXIT_WRITE_ERROR);
-          }
-          success.inspectJsonPath = jsonOut;
-          success.inspected = inspected;
-          process.stderr.write(`browsershot: inspected ${inspectSummary(inspected, values["inspect-attr"])}\n`);
-          process.stderr.write(`browsershot: element json ${jsonOut}\n`);
-        }
-        if (values.publish != null) {
-          let pngLabel = labelFromPath(out);
-          if (values["publish-label"] != null) {
-            pngLabel = values["publish-label"];
-          }
-          try {
-            const published = publish({ filePath: out, dest: values.publish, isGif: false, size: publishSize, label: pngLabel });
-            success.publishedUrl = published.url;
-            if (!json) {
-              process.stdout.write(`${published.markdown}\n`);
-            }
-          } catch (e) {
-            const failure = publishFailure(out, e as Error);
-            fail(failure.message, failure.code);
-          }
-        }
-        if (json) {
-          process.stdout.write(`${JSON.stringify(success)}\n`);
-        }
-        if (profile.autoOpen === true || values["auto-open"]) {
-          openFile(out, (message) => process.stderr.write(`browsershot: warning: ${message}\n`));
-        }
+        openFile(out, (message) => process.stderr.write(`browsershot: warning: ${message}\n`));
       }
     }
   }

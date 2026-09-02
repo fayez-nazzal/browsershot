@@ -6,7 +6,6 @@ const BASE_OPTIONS: CaptureOptions = {
   width: 800,
   height: 600,
   fullPage: false,
-  headless: true,
   scale: 1,
   waitUntil: "load",
   delayMs: 0,
