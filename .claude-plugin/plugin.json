@@ -1,6 +1,6 @@
 {
   "name": "browsershot",
-  "version": "1.0.0",
+  "version": "1.0.0-alpha",
   "description": "CLI for AI coding agents: capture a web page to a PNG via the Playwright Chromium headless shell, with a JSON contract to assert on.",
   "author": {
     "name": "Fayez Nazzal"

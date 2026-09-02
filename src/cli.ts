@@ -16,7 +16,7 @@ import { profilePaths, readProfile, resolveQuickUrl, setProfileValue, unsetProfi
 import { openFile } from "./open.ts";
 import { createRunTmpDir, ensureWorkspace, removeRunTmpDir } from "./workspace.ts";
 
-export const VERSION = packageJson.version;
+export const VERSION = `${packageJson.version}-alpha`;
 
 const HELP = `browsershot ${VERSION} — capture a web page to a PNG
 
