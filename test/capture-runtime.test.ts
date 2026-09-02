@@ -4,13 +4,8 @@ import { capture, type CaptureOptions } from "../src/capture.ts";
 
 const BASE_OPTIONS: CaptureOptions = {
   url: "https://example.test/",
-  width: 800,
-  height: 600,
   fullPage: false,
-  scale: 1,
-  waitUntil: "load",
   delayMs: 0,
-  timeoutMs: 1000,
   allowBlank: true,
 };
 

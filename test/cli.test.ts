@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { timestamp, normalizeUrl, parseSize, PRESETS, sha256Hex, normalizeArgv } from "../src/cli.ts";
+import { timestamp, normalizeUrl, parseSize, resolvePublishDest, sha256Hex, normalizeArgv } from "../src/cli.ts";
 
 test("timestamp matches YYYYMMDD-HHMMSS", () => {
   expect(timestamp()).toMatch(/^\d{8}-\d{6}$/);
@@ -29,12 +29,6 @@ test("parseSize rejects malformed input", () => {
   expect(parseSize("")).toBeNull();
 });
 
-test("PRESETS cover desktop, laptop, and phone with exact sizes", () => {
-  expect(PRESETS.desktop).toEqual({ width: 1920, height: 1080 });
-  expect(PRESETS.laptop).toEqual({ width: 1440, height: 900 });
-  expect(PRESETS.phone).toEqual({ width: 390, height: 844 });
-  expect(Object.keys(PRESETS)).toEqual(["desktop", "laptop", "phone"]);
-});
 test("sha256Hex hashes bytes to lowercase hex", () => {
   const empty = sha256Hex(new Uint8Array());
   expect(empty).toBe("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
@@ -57,13 +51,31 @@ test("normalizeUrl still prefixes host:port shorthand", () => {
   expect(normalizeUrl("localhost:3000")).toBe("https://localhost:3000");
 });
 
-test("normalizeArgv merges a dash-leading --html-class value into = form", () => {
-  expect(normalizeArgv(["--html-class", "-light,dark"])).toEqual(["--html-class=-light,dark"]);
-  expect(normalizeArgv(["url", "--html-class", "-light,dark", "-o", "x.png"])).toEqual(["url", "--html-class=-light,dark", "-o", "x.png"]);
+test("normalizeArgv merges a bare --publish value into = form", () => {
+  expect(normalizeArgv(["--publish", "gdrive:dir/"])).toEqual(["--publish=gdrive:dir/"]);
+  expect(normalizeArgv(["url", "--publish", "gdrive:dir/", "--json"])).toEqual(["url", "--publish=gdrive:dir/", "--json"]);
 });
 
-test("normalizeArgv leaves plain values and other flags alone", () => {
-  expect(normalizeArgv(["--html-class", "dark"])).toEqual(["--html-class", "dark"]);
-  expect(normalizeArgv(["--html-class=-light,dark"])).toEqual(["--html-class=-light,dark"]);
-  expect(normalizeArgv(["--wait", "networkidle"])).toEqual(["--wait", "networkidle"]);
+test("normalizeArgv keeps a bare --publish as an empty = form", () => {
+  expect(normalizeArgv(["--publish"])).toEqual(["--publish="]);
+  expect(normalizeArgv(["--publish", "--json"])).toEqual(["--publish=", "--json"]);
+  expect(normalizeArgv(["--publish=one"])).toEqual(["--publish=one"]);
+});
+
+test("resolvePublishDest prefers the explicit destination", () => {
+  expect(resolvePublishDest("gdrive:explicit/dir/", "gdrive:saved/dir/")).toBe("gdrive:explicit/dir/");
+});
+
+test("resolvePublishDest falls back to the saved publish key", () => {
+  expect(resolvePublishDest("", "gdrive:saved/dir/")).toBe("gdrive:saved/dir/");
+});
+
+test("resolvePublishDest rejects a bare --publish with no saved key", () => {
+  expect(() => resolvePublishDest("", undefined)).toThrow("config set publish");
+  expect(() => resolvePublishDest("", " ")).toThrow("config set publish");
+});
+
+test("resolvePublishDest returns null when publish is not requested", () => {
+  expect(resolvePublishDest(null, "gdrive:saved/dir/")).toBeNull();
+  expect(resolvePublishDest(null, undefined)).toBeNull();
 });

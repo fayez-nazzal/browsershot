@@ -343,7 +343,7 @@ export async function inspectElement(page: Page, options: InspectOptions, footer
   } catch {
     throw new Error(
       `--inspect found no element matching ${options.selector}. ` +
-        `Check the selector, or raise --delay / --timeout if the app renders it late.`,
+        `Check the selector, or raise --delay if the app renders it late.`,
     );
   }
   await locator.scrollIntoViewIfNeeded({ timeout: options.timeoutMs }).catch(() => {});

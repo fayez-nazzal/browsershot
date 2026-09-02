@@ -16,18 +16,14 @@ the recipes, and the traps that waste a run.
   `--inspect-json` sidecar instead.
 - Always pass `--json` when a script consumes the run. Without it the absolute
   output path is the first stdout line and everything else is on stderr.
-- Never combine `--json` with `--stdout`. That exits `2`.
 - Assert on text before you believe a run. A file is written even when the flow
   went nowhere.
 - One capture, one claim. If you cannot name what the capture proves, do not
   ship it.
 - Never log in from `browsershot`. It has no login flag. Prefer
   `--auth`, which gets the jar from `authstate` for you.
-- Always pipe `authstate` through `jq -r .path` when you resolve the jar
-  yourself. It prints a JSON envelope on stdout, not a bare path.
 - Compare the `sha256` field across runs to catch two captures that are secretly
   the same image.
-- Label any capture built with `--mock` as simulated, in the same breath as the path.
 
 ## Recipes
 
@@ -107,25 +103,29 @@ browsershot "https://example.com/account" \
   --json
 ```
 
-The manual form is still there when you want the jar path in your own hands, for
-example to reuse it across several tools.
-
-```sh
-jar=$(authstate ensure --user basic-user | jq -r .path)
-browsershot "https://example.com/account" \
-  --cookies "$jar" \
-  --inspect '[data-testid="account-name"]' \
-  -o account.png \
-  --json
-```
-
-- A jar is a plain file. Any number of captures can read the same one at once.
-- Different accounts means different jars, not a shared one.
-- Any of `--auth` / `--auth-user` / `--auth-credentials` together with `--cookies` exits `2`. Both pick the jar.
 - A missing `authstate` binary exits `3` and tells you to install it.
 - A failed login exits `1` and repeats the `authstate` exit code and its `reason`.
-- A missing jar path exits `2` with `--cookies file not found: <path>`.
 - Prove the session took. Inspect for something only a signed in page shows.
+
+### Publish to a saved destination
+
+Save the rclone destination once per project, then publish bare.
+
+```sh
+browsershot config set publish gdrive:PR-Shots/myrepo/mybranch/
+browsershot /dashboard --publish
+```
+
+Resolution order: an explicit `--publish <dest>` value wins, then the `publish`
+profile key, then a usage error exits `2`. Bare `--publish` without a saved key
+fails before the browser launches.
+
+```sh
+browsershot /dashboard --publish gdrive:other/dir/    # explicit override
+```
+
+`--publish-size` and `--publish-label` control the embed width and alt text. A
+publish failure after a successful write exits `5` and keeps the PNG on disk.
 
 ## Reading the output
 
@@ -149,80 +149,30 @@ Fields worth asserting on.
 
 Exit codes seen in the source and reproduced by running the binary.
 
-| Code | Meaning | Example message |
-|------|---------|-----------------|
-| `0` | Capture written | `browsershot: wrote /tmp/p.png (71625 bytes)` |
-| `1` | The run failed a guard or the capture threw | `--expect-text "Nope" was not found on the page` |
-| `2` | Usage error, including an unknown flag or a missing jar | `--cookies file not found: /tmp/nope.json` |
-| `3` | Environment problem: `authstate` missing or no credentials file found | `no .testing-credentials.yaml found from ... up to ...` |
-| `5` | The PNG was written but the inspect sidecar could not be | `wrote <png>, but could not write <json>` |
-| `6` | The file was written but `--publish` failed | `wrote <path>, but publish failed: ...` |
-
-`src/exit-codes.ts` also defines `4`. Nothing in the CLI raises it today, so do
-not branch on it.
+|Code|Meaning|Example message|
+|---|---|---|
+|`0`|Capture written|`browsershot: wrote /tmp/p.png (71625 bytes)`|
+|`1`|The run failed a guard or the capture threw|`--expect-text "Nope" was not found on the page`|
+|`2`|Usage error, including an unknown flag|`--size must look like WxH (e.g. 1920x1080), got "abc"`|
+|`3`|Environment problem: `authstate` missing or no credentials file found|`no .testing-credentials.yaml found from ... up to ...`|
+|`4`|The PNG was written but the inspect sidecar could not be|`wrote <png>, but could not write <json>`|
+|`5`|The file was written but `--publish` failed|`wrote <path>, but publish failed: ...`|
 
 ## Pitfalls
 
-| Symptom | Cause | Fix |
-|---------|-------|-----|
-| `Unknown option '--user-data-dir'` or `'--login'` | Neither flag exists. Older notes claimed they did | Use `--auth`, or `--cookies` with an `authstate` jar |
-| `jar` contains JSON, not a path | `authstate` prints a JSON envelope on stdout | Use `--auth`, or pipe it: `authstate ensure ... \| jq -r .path` |
-| Exit `2` with `--auth-purpose was removed` | The old flag is gone | Use `--auth-user` |
-| `authstate is not installed` | The binary is not on `PATH` | Install `authstate`, then re-run |
-| Exit `3` with `no .testing-credentials.yaml found` | `--auth` could not discover the file, or it does not exist | Pass `--auth-credentials <path>` |
-| Exit `1` with `page still looks blank after 10s` | An app that renders late, or a genuinely sparse page | Raise `--delay`, or pass `--allow-blank` when a sparse page is the point |
-| Exit `1` with `--expect-text ... was not found` | The flow did not reach the page you expected | Probe with `--inspect` and read the sidecar |
-| Exit `2` on `--json --stdout` | Both want stdout | Pick one. Use `--json` for scripts |
-| Run hangs until timeout | `--wait networkidle` on a page with polling, ads or analytics | Use `--wait load` with `--delay 3000` |
-| The shot shows the page you started on | The link had `target="_blank"`, so the new tab was never captured | Click a link that stays in the tab, or navigate straight to the destination |
-| Click times out on a visible looking control | It sits in a hidden tab or accordion pane | `--inspect` it first. A `box` of `0,0,0,0` means hidden. Open the parent first |
-| A form step times out | The field is not on that page. Sign up and sign in pages differ | Probe for the field before typing into it |
-| The capture shows a login screen | The jar expired | Re-run `authstate ensure`, which relogs in when the jar is dead |
-| Two captures look identical | They are. Compare the `sha256` field | Check the flow actually moved between runs |
-
-## Mocking
-
-`--mock <spec.json>` intercepts requests before the page sees them, so a flow can
-reach a state the server will not serve yet. Entries match a URL glob and do one
-of three things.
-
-| Kind | What it does | Reach for it when |
-|------|--------------|-------------------|
-| `redirect` | Answers with a 302 to somewhere else | A **server side** decision sends the user elsewhere and you need that branch |
-| `merge` | Fetches the real response, deep merges your JSON patch into it | You want one field different and everything else real, such as one flag flipped |
-| `json` | Replaces the body outright, with optional `status` | The endpoint does not exist yet, or you need an error |
-
-```json
-{
-  "mocks": [
-    { "url": "**/subscriptions/new*", "redirect": "https://app.example.com/checkout/new?plan=PRO" },
-    { "url": "**/user_info*", "merge": { "feature_flags": { "new_checkout": true } } },
-    { "url": "**/billing/quote*", "json": { "error": "unavailable" }, "status": 503 }
-  ]
-}
-```
-
-### Pick the right kind, or the mock does nothing
-
-Ask where the decision is made.
-
-- **The server decides.** A redirect, a rendered template, a flag read in the
-  backend. Patching an API response in the browser changes nothing, because the
-  server never sees your patch. Use `redirect` to stand in for the branch.
-- **The client decides.** A flag the front end reads to choose what to render.
-  Use `merge` so every other field stays real.
-- **The route does not exist.** No mock helps. A missing page is missing whatever
-  the flags say. Mock the step that leads there and let the real app answer.
-
-Getting this backwards produces a run that looks fine and proves nothing.
-
-### Keep specs portable across apps
-
-- Match with `**/path*`, not a full URL. The same spec then works against local,
-  staging and production.
-- Put one spec per scenario in a file named after the scenario, not after the app.
-- Keep the destination host in the `redirect` value only, since that is the one
-  place it genuinely matters.
+|Symptom|Cause|Fix|
+|---|---|---|
+|`Unknown option '--user-data-dir'`, `'--login'`, `'--cookies'`, `'--mock'` or `'--stdout'`|None of these flags exist anymore. Older notes claimed they did|Use `--auth` for sessions, `--act` for interactive states, `--json` for scripts|
+|Exit `2` with `--auth-purpose was removed`|The old flag is gone|Use `--auth-user`|
+|`authstate is not installed`|The binary is not on `PATH`|Install `authstate`, then re-run|
+|Exit `3` with `no .testing-credentials.yaml found`|`--auth` could not discover the file, or it does not exist|Pass `--auth-credentials <path>`|
+|Exit `1` with `page still looks blank after 10s`|An app that renders late, or a genuinely sparse page|Raise `--delay`, or pass `--allow-blank` when a sparse page is the point|
+|Exit `1` with `--expect-text ... was not found`|The flow did not reach the page you expected|Probe with `--inspect` and read the sidecar|
+|The shot shows the page you started on|The link had `target="_blank"`, so the new tab was never captured|Click a link that stays in the tab, or navigate straight to the destination|
+|Click times out on a visible looking control|It sits in a hidden tab or accordion pane|`--inspect` it first. A `box` of `0,0,0,0` means hidden. Open the parent first|
+|A form step times out|The field is not on that page. Sign up and sign in pages differ|Probe for the field before typing into it|
+|The capture shows a login screen|The jar expired|Re-run `authstate ensure`, which relogs in when the jar is dead|
+|Two captures look identical|They are. Compare the `sha256` field|Check the flow actually moved between runs|
 
 ## Reporting
 
@@ -232,4 +182,3 @@ Report paths and a verdict. Never image bytes.
 - State what the capture shows, quoting the text you asserted on from
   `inspected`, and say how you verified it.
 - Give the exit code when the run failed.
-- If a mock was used, say so and say which branch it stood in for.

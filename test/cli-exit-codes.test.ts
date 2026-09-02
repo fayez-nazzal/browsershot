@@ -16,7 +16,7 @@ test("a usage error exits with code 2", () => {
   expect(proc.exitCode).toBe(2);
 });
 
-test("a publish failure after a successful write exits 6 and keeps the artifact on disk", () => {
+test("a publish failure after a successful write exits 5 and keeps the artifact on disk", () => {
   const dir = scratch();
   const html = join(dir, "sample.html");
   writeFileSync(
@@ -38,12 +38,8 @@ test("a publish failure after a successful write exits 6 and keeps the artifact 
       "bun",
       CLI,
       `file://${html}`,
-      "--width",
-      "640",
-      "--height",
-      "480",
-      "--scale",
-      "1",
+      "--size",
+      "640x480",
       "--output",
       out,
       "--publish",
@@ -52,6 +48,6 @@ test("a publish failure after a successful write exits 6 and keeps the artifact 
     { cwd: dir },
   );
 
-  expect(proc.exitCode).toBe(6);
+  expect(proc.exitCode).toBe(5);
   expect(existsSync(out)).toBe(true);
 }, 120000);

@@ -13,7 +13,6 @@ It is made to be called by an AI coding agent, not typed by a human. The contrac
 - Captures a page to a PNG at retina scale by default.
 - Drives the page before capture with `--act`, so you can shoot an open menu or a focused control.
 - Highlights one element with `--inspect` and writes its role, name and ARIA state to a JSON sidecar.
-- Fakes a network response with `--mock`, so a flow can reach a state the server will not serve yet.
 - Uploads the result and prints a public link with `--publish`.
 
 ## Stateless by design
@@ -96,93 +95,25 @@ Skill paths below are project scope.
 
 Full recipes live in [`AGENTS.md`](AGENTS.md).
 
-## Configure
+## Quick capture
 
-`browsershot` needs no config file for normal use.
-
-Two things are optional.
-
-- For an authenticated capture, pass a Playwright storage state file with `--cookies <path>`. `browsershot` never logs in and never stores a password.
-- Or pass `--auth` and let `browsershot` do it all: it discovers `.testing-credentials.yaml` by walking up from the working directory, runs `authstate ensure` for the file's default user, reads the `path` field of the JSON envelope, and uses that jar. Add `--auth-user <name>` to pick one account out of the file, or `--auth-credentials <path>` to name the file explicitly. Any `--auth*` flag with `--cookies` exits `2`, and a missing `authstate` binary exits `3`.
-- For `--publish`, configure an `rclone` remote once with `rclone config`. Then pass a destination such as `--publish "gdrive:shots/my-repo/my-branch/"`.
-
-Keep any local credentials file out of the repo. `.gitignore` already covers `.env` and `.testing-credentials.yaml`.
-
-### Project profile
-
-Save the URL and common capture settings in `.browsershot/` in your working directory:
-
-```sh
-browsershot config set url "http://localhost:8990/a/app?organizationId=8#/workspaces/8"
-browsershot config set auth-user test-user
-browsershot config set expect-text DocClever
-browsershot config set output /tmp/docclever.png
-browsershot config set json
-browsershot config set auto-open
-```
-
-Then capture a route with a short command:
-
-```sh
-browsershot /clients-needing-attention
-```
-
-The route is added inside the saved hash route. The query string stays before the hash. Without a hash route the path is added to the URL pathname. A capture without a saved URL must use a full URL.
-
-Saved values apply after built-in defaults. Explicit flags override them for one run. Without a saved or explicit output path the PNG goes to `.browsershot/captures/<timestamp>.png`.
-
-Inspect or remove saved values:
-
-```sh
-  browsershot config show
-  browsershot config path
-  browsershot config unset url
-  browsershot config unset auth-user
-browsershot config unset expect-text
-browsershot config unset output
-browsershot config unset json
-browsershot config unset auto-open
-```
-
-The profile is local to `.browsershot/` and a generated `.browsershot/.gitignore` makes git ignore the whole directory. It never stores passwords or auth jars.
-
-To verify captures end to end with a local sample page:
-
-```sh
-bun test test/cli-e2e.test.ts
-```
-
-The test checks viewport and full-page PNG dimensions. It checks the PNG signature. It checks the output hash. It checks rendered heading text.
-
-## Daily use
+`browsershot <url-or-path>` with zero flags is the normal thing:
 
 ```sh
 browsershot example.com                          # -> .browsershot/captures/<timestamp>.png
 browsershot https://example.com -o shot.png      # custom path
-browsershot example.com --preset phone           # 390x844 viewport
 browsershot example.com --size 1920x1080         # custom viewport
 browsershot example.com --full-page              # whole scrollable page
-browsershot example.com --stdout > shot.png
+browsershot example.com --delay 3000             # extra wait before capture
+browsershot example.com --json                   # machine readable summary
+browsershot example.com --auto-open              # open the PNG when done
 ```
 
-Capture a page behind a login in one command:
+Hardcoded capture defaults: viewport 1440x900 at 2x (retina), wait event `load`, navigation timeout 30s. `--size WxH` is the only sizing form.
 
-```sh
-browsershot https://example.com/account \
-  --auth \
-  --inspect '[data-testid="account-name"]'
-```
+## Prove it
 
-Or pin a specific account from the file:
-
-```sh
-browsershot https://example.com/account \
-  --auth \
-  --auth-user basic-user \
-  --inspect '[data-testid="account-name"]'
-```
-
-Drive the page first, then shoot:
+Every capture can carry its own evidence. Drive the page first, then shoot:
 
 ```sh
 browsershot https://example.com/dashboard \
@@ -200,6 +131,81 @@ browsershot: element json shot.json
 ```
 
 That line is the point. You can assert on `role`, `name` and state without ever opening the image.
+
+Guards keep bad captures out of your review. `--expect-text <s>` fails the run unless the text rendered. A non-2xx/3xx response fails the run unless you pass `--allow-status`. A page that still looks blank after 10s of polling fails the run unless you pass `--allow-blank`.
+
+`--box` and `--marker` draw rectangles and point markers on the PNG after capture.
+
+## Auth
+
+`browsershot` never logs in and never stores a password. `authstate` owns every login:
+
+```sh
+browsershot https://example.com/account \
+  --auth \
+  --inspect '[data-testid="account-name"]'
+```
+
+`--auth` discovers `.testing-credentials.yaml` by walking up from the working directory, runs `authstate ensure` for the file's default user, reads the `path` field of the JSON envelope, and uses that jar. Add `--auth-user <name>` to pick one account out of the file, or `--auth-credentials <path>` to name the file the walk-up will not find. A missing `authstate` binary exits `3`.
+
+Keep any local credentials file out of the repo. `.gitignore` already covers `.env` and `.testing-credentials.yaml`.
+
+## Publish
+
+Configure an `rclone` remote once with `rclone config`. Then upload and get a public embed:
+
+```sh
+browsershot example.com --publish "gdrive:shots/my-repo/my-branch/"
+```
+
+The command prints a PR-ready inline Drive image embed for the PNG. Save the destination in the profile to make it the default:
+
+```sh
+browsershot config set publish "gdrive:shots/my-repo/my-branch/"
+browsershot example.com --publish
+```
+
+An explicit `--publish <dest>` value overrides the saved key. `--publish-size` and `--publish-label` control the embed width and alt text.
+
+## Project profile
+
+Save the URL and common capture settings in `.browsershot/` in your working directory:
+
+```sh
+browsershot config set url "http://localhost:8990/a/app?organizationId=8#/workspaces/8"
+browsershot config set auth-user test-user
+browsershot config set expect-text DocClever
+browsershot config set output /tmp/docclever.png
+browsershot config set publish "gdrive:shots/my-repo/my-branch/"
+browsershot config set json
+browsershot config set auto-open
+```
+
+Then capture a route with a short command:
+
+```sh
+browsershot /clients-needing-attention
+```
+
+The route is added inside the saved hash route. The query string stays before the hash. Without a hash route the path is added to the URL pathname. A capture without a saved URL must use a full URL.
+
+Saved values apply after built-in defaults. Explicit flags override them for one run. Without a saved or explicit output path the PNG goes to `.browsershot/captures/<timestamp>.png`.
+
+Inspect or remove saved values:
+
+```sh
+browsershot config show
+browsershot config path
+browsershot config unset url
+browsershot config unset auth-user
+browsershot config unset expect-text
+browsershot config unset output
+browsershot config unset publish
+browsershot config unset json
+browsershot config unset auto-open
+```
+
+The profile is local to `.browsershot/` and a generated `.browsershot/.gitignore` makes git ignore the whole directory. It never stores passwords or auth jars.
 
 ## Output
 
@@ -231,15 +237,11 @@ Pass `--json` to get one JSON object on stdout instead:
 - `publishedUrl` is set only with `--publish`.
 - Fields that do not apply to the run are `null`.
 
-`--json` cannot be combined with `--stdout`, because both want stdout. That combination exits `2`.
-
 Run `browsershot --help` for the full flag list.
 
 ## Notes for agents
 
-`AGENTS.md` holds the recipes: how to probe a flow cheaply before capturing it, how to script a login, how to pick the right kind of mock, and the traps that waste a run.
-
-Ready made mock specs live in `examples/`.
+`AGENTS.md` holds the recipes: how to probe a flow cheaply before capturing it, how to script a login, and the traps that waste a run.
 
 ## Develop
 
@@ -247,6 +249,14 @@ Ready made mock specs live in `examples/`.
 bun test                  # unit tests, no network
 bun run src/cli.ts --help
 ```
+
+To verify captures end to end with a local sample page:
+
+```sh
+bun test test/cli-e2e.test.ts
+```
+
+The test checks viewport and full-page PNG dimensions. It checks the PNG signature. It checks the output hash. It checks rendered heading text.
 
 ## Contributing
 

@@ -8,6 +8,7 @@ export interface ProfileConfig {
   output?: string;
   json?: boolean;
   autoOpen?: boolean;
+  publish?: string;
 }
 
 interface ProfilePaths {
@@ -16,7 +17,7 @@ interface ProfilePaths {
   captures: string;
 }
 
-const CONFIG_KEYS = new Set(["url", "auth-user", "expect-text", "output", "json", "auto-open"]);
+const CONFIG_KEYS = new Set(["url", "auth-user", "expect-text", "output", "json", "auto-open", "publish"]);
 
 export function profilePaths(root = process.cwd()): ProfilePaths {
   const directory = join(root, ".browsershot");
@@ -29,7 +30,7 @@ function validateConfig(config: unknown): ProfileConfig {
   }
   const result: ProfileConfig = {};
   for (const [key, value] of Object.entries(config)) {
-    if (!["url", "authUser", "expectText", "output", "json", "autoOpen"].includes(key)) {
+    if (!["url", "authUser", "expectText", "output", "json", "autoOpen", "publish"].includes(key)) {
       throw new Error(`unknown profile setting: ${key}`);
     }
     if (["json", "autoOpen"].includes(key)) {

@@ -45,7 +45,7 @@ test("--json prints exactly one JSON object on stdout and keeps human lines on s
   const html = writeSamplePage(dir);
   const out = join(dir, "shot.png");
 
-  const proc = Bun.spawnSync(["bun", CLI, `file://${html}`, "--width", "640", "--height", "480", "--scale", "1", "--output", out, "--json"], { cwd: dir });
+  const proc = Bun.spawnSync(["bun", CLI, `file://${html}`, "--size", "640x480", "--output", out, "--json"], { cwd: dir });
 
   expect(proc.exitCode).toBe(0);
   const stdout = proc.stdout.toString();
@@ -64,7 +64,7 @@ test("without --json the first stdout line is the absolute output path", () => {
   const dir = scratch();
   const html = writeSamplePage(dir);
 
-  const proc = Bun.spawnSync(["bun", CLI, `file://${html}`, "--width", "640", "--height", "480", "--scale", "1", "--output", "shot.png"], { cwd: dir });
+  const proc = Bun.spawnSync(["bun", CLI, `file://${html}`, "--size", "640x480", "--output", "shot.png"], { cwd: dir });
 
   expect(proc.exitCode).toBe(0);
   const first = proc.stdout.toString().split("\n")[0]!;
@@ -73,10 +73,3 @@ test("without --json the first stdout line is the absolute output path", () => {
   expect(existsSync(first)).toBe(true);
 }, 120000);
 
-test("--json cannot be combined with --stdout", () => {
-  const dir = scratch();
-
-  const proc = Bun.spawnSync(["bun", CLI, "https://example.com", "--json", "--stdout"], { cwd: dir });
-
-  expect(proc.exitCode).toBe(2);
-});

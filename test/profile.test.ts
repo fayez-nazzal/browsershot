@@ -23,6 +23,7 @@ test("profile write and read preserve saved settings", () => {
     output: "/tmp/docclever.png",
     json: true,
     autoOpen: true,
+    publish: "gdrive:PR-Shots/myrepo/mybranch/",
   };
 
   writeProfile(root, config);

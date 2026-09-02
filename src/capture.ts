@@ -1,28 +1,19 @@
 import { chromium } from "playwright";
 import type { Browser, BrowserContext, LaunchOptions, Page } from "playwright";
 import { runActions, type Action } from "./act.ts";
-import { applyMocks, type Mock } from "./mock.ts";
 import { inspectElement, type ElementRecord, type InspectOptions } from "./inspect.ts";
 import { assertLanding } from "./landing.ts";
 
-export type WaitUntil = "load" | "domcontentloaded" | "networkidle" | "commit";
-
 export interface CaptureOptions {
   url: string;
-  width: number;
-  height: number;
+  viewport?: { width: number; height: number };
   fullPage: boolean;
-  scale: number;
-  waitUntil: WaitUntil;
   delayMs: number;
-  timeoutMs: number;
   cookiesPath?: string;
-  htmlClass?: HtmlClassChange;
   allowBlank: boolean;
   inspect?: InspectOptions;
   inspectFooter?: string;
   actions?: Action[];
-  mocks?: Mock[];
   allowStatus?: boolean;
   expectText?: string;
   log?: (message: string) => void;
@@ -34,10 +25,10 @@ export interface CaptureResult {
   inspected: ElementRecord | null;
 }
 
-export interface HtmlClassChange {
-  add: string[];
-  remove: string[];
-}
+export const VIEWPORT_WIDTH = 1440;
+export const VIEWPORT_HEIGHT = 900;
+const DEVICE_SCALE_FACTOR = 2;
+export const NAVIGATION_TIMEOUT_MS = 30000;
 
 export interface RenderStats {
   textLength: number;
@@ -48,7 +39,6 @@ const BLANK_TEXT_THRESHOLD = 20;
 const BLANK_ELEMENT_THRESHOLD = 15;
 const RENDER_POLL_INTERVAL_MS = 250;
 const RENDER_POLL_TIMEOUT_MS = 10000;
-const HTML_CLASS_REPAINT_MS = 600;
 
 export function renderLooksBlank(stats: RenderStats): boolean {
   let result = false;
@@ -56,22 +46,6 @@ export function renderLooksBlank(stats: RenderStats): boolean {
     result = true;
   }
   return result;
-}
-
-export function parseHtmlClassFlag(raw: string): HtmlClassChange {
-  const tokens = raw.split(/[\s,]+/).filter((token) => token.length > 0);
-  const change: HtmlClassChange = { add: [], remove: [] };
-  for (const token of tokens) {
-    if (token.startsWith("-")) {
-      change.remove.push(token.slice(1));
-    } else {
-      change.add.push(token);
-    }
-  }
-  if (change.add.length === 0 && change.remove.length === 0) {
-    throw new Error("--html-class needs at least one class name");
-  }
-  return change;
 }
 
 export type LaunchBrowser = (options: LaunchOptions) => Promise<Browser>;
@@ -105,20 +79,13 @@ async function openSession(o: CaptureOptions, deps: CaptureDeps, extra: Record<s
   } catch (e) {
     throw improveLaunchError(e as Error);
   }
-  const viewport = { width: o.width, height: o.height };
-  const contextOptions: Record<string, unknown> = { viewport, deviceScaleFactor: o.scale, ...extra };
+  const viewport = o.viewport ?? { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT };
+  const contextOptions: Record<string, unknown> = { viewport, deviceScaleFactor: DEVICE_SCALE_FACTOR, ...extra };
   if (o.cookiesPath != null) {
     contextOptions.storageState = o.cookiesPath;
   }
   const context = await browser.newContext(contextOptions);
   const session: Session = { context, browser };
-  if (o.mocks != null) {
-    await applyMocks(
-      session.context,
-      o.mocks,
-      o.verbose === true ? (message) => process.stderr.write(`browsershot: ${message}\n`) : undefined,
-    );
-  }
   return session;
 }
 
@@ -163,35 +130,20 @@ async function waitForRender(page: Page, o: CaptureOptions): Promise<void> {
       throw new Error(
         `page still looks blank after ${RENDER_POLL_TIMEOUT_MS / 1000}s ` +
           `(~${stats.textLength} chars of text, ${stats.elementCount} elements). ` +
-          `The app may not have rendered: check the URL, the jar passed to --cookies, ` +
-          `or raise --delay / use --wait networkidle. Pass --allow-blank to capture anyway.`,
+          `The app may not have rendered: check the URL, the authstate jar, ` +
+          `or raise --delay. Pass --allow-blank to capture anyway.`,
       );
     }
   }
 }
 
-async function applyHtmlClass(page: Page, o: CaptureOptions): Promise<void> {
-  if (o.htmlClass != null) {
-    await page.evaluate((change) => {
-      for (const name of change.remove) {
-        document.documentElement.classList.remove(name);
-      }
-      for (const name of change.add) {
-        document.documentElement.classList.add(name);
-      }
-    }, o.htmlClass);
-    await page.waitForTimeout(HTML_CLASS_REPAINT_MS);
-  }
-}
-
 export async function preparePage(page: Page, o: CaptureOptions): Promise<void> {
-  o.log?.(`navigating ${o.url} (wait: ${o.waitUntil}, timeout ${Math.round(o.timeoutMs / 1000)}s)`);
+  o.log?.(`navigating ${o.url} (wait: load, timeout ${NAVIGATION_TIMEOUT_MS / 1000}s)`);
   const started = Date.now();
-  const response = await page.goto(o.url, { waitUntil: o.waitUntil, timeout: o.timeoutMs });
+  const response = await page.goto(o.url, { waitUntil: "load", timeout: NAVIGATION_TIMEOUT_MS });
   o.log?.(`page loaded in ${((Date.now() - started) / 1000).toFixed(1)}s`);
   o.log?.("waiting for render…");
   await waitForRender(page, o);
-  await applyHtmlClass(page, o);
   if (o.delayMs > 0) {
     await page.waitForTimeout(o.delayMs);
   }
@@ -209,7 +161,7 @@ export async function preparePage(page: Page, o: CaptureOptions): Promise<void> 
 
 async function playActions(page: Page, o: CaptureOptions): Promise<void> {
   if (o.actions != null) {
-    await runActions(page, o.actions, o.timeoutMs, o.verbose === true ? (message) => process.stderr.write(`browsershot: ${message}\n`) : undefined);
+    await runActions(page, o.actions, NAVIGATION_TIMEOUT_MS, o.verbose === true ? (message) => process.stderr.write(`browsershot: ${message}\n`) : undefined);
   }
 }
 

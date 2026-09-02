@@ -2,14 +2,13 @@
 
 import { parseArgs } from "node:util";
 import packageJson from "../package.json";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, statSync, writeFileSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { createHash } from "node:crypto";
-import { capture, parseHtmlClassFlag, type HtmlClassChange, type WaitUntil } from "./capture.ts";
+import { capture, NAVIGATION_TIMEOUT_MS, VIEWPORT_WIDTH, VIEWPORT_HEIGHT } from "./capture.ts";
 import { drawAnnotations, parseBoxFlag, parseMarkerFlag, type BoxAnnotation, type MarkerAnnotation } from "./annotate.ts";
 import { publish, labelFromPath, DEFAULT_EMBED_WIDTH } from "./publish.ts";
 import { parseActions, type Action } from "./act.ts";
-import { parseMocks, type Mock } from "./mock.ts";
 import type { InspectOptions } from "./inspect.ts";
 import { EXIT_FAILED, EXIT_OK, EXIT_USAGE, EXIT_WRITE_ERROR, publishFailure, type ExitCode } from "./exit-codes.ts";
 import { resolveAuthJar, AuthStateFailure, discoverAuthCredentials } from "./authstate.ts";
@@ -19,96 +18,45 @@ import { createRunTmpDir, ensureWorkspace, removeRunTmpDir } from "./workspace.t
 
 export const VERSION = packageJson.version;
 
-const WAIT_EVENTS = ["load", "domcontentloaded", "networkidle", "commit"] as const;
-
-export const PRESETS: Record<string, { width: number; height: number }> = {};
-PRESETS.desktop = { width: 1920, height: 1080 };
-PRESETS.laptop = { width: 1440, height: 900 };
-PRESETS.phone = { width: 390, height: 844 };
-
 const HELP = `browsershot ${VERSION} — capture a web page to a PNG
 
 USAGE
-  browsershot <url> [options]
+  browsershot <url-or-path> [options]
   browsershot config <set|unset|show|path> [name] [value]
-  browsershot <quick-path> [options]
 
-  Loads <url> headless in the bundled Chromium headless shell and saves a
-  screenshot of the viewport.
+  Loads the page headless in the bundled Chromium headless shell and saves a
+  screenshot of the viewport. Hardcoded capture defaults: viewport 1440x900 at
+  2x (retina), wait event load, navigation timeout 30s.
 
-OPTIONS
-  -o, --output <path>   Output PNG path (default: .browsershot/captures/<timestamp>.png)
-      --width <px>      Viewport width  (default: 1440)
-      --height <px>     Viewport height (default: 900)
-      --size <WxH>      Shorthand for both, e.g. 1920x1080 (overrides all sizing flags)
-      --preset <name>   Viewport preset: desktop 1920x1080, laptop 1440x900, phone 390x844
-      --full-page       Capture the whole scrollable page (default: viewport only)
-      --cookies <path>  Playwright storageState jar for an authenticated capture.
-                        browsershot never logs in and never stores credentials.
-                        Produce the jar with authstate, which owns every login:
-                          jar=$(authstate ensure --credentials <yaml> --user <name> | jq -r .path)
-                          browsershot <url> --cookies "$jar"
-                        A jar is a plain file, so any number of captures can read
-                        the same one at once, and captures on different accounts
-                        simply pass different jars.
-      --auth            Resolve the jar in one step: discover .testing-credentials.yaml
-                        (walking up from the working directory), run
-                        "authstate ensure" for the file's default user, read the
-                        "path" field of the JSON envelope, and use it as --cookies.
-                        Pass --auth-user to pick a different entry.
-                        Passing --cookies together with any --auth* flag exits 2.
-      --auth-user <name>  Which credentials entry to use with --auth. Implies --auth.
-      --auth-credentials <path>  Credentials file to use instead of discovery.
-                        Implies the auth flow; combine with --auth-user. Useful
-                        when .testing-credentials.yaml lives somewhere the
-                        walk-up will not find.
-      --scale <n>       deviceScaleFactor for hi-dpi (default: 2, retina)
-      --wait <event>    ${WAIT_EVENTS.join(" | ")} (default: load)
-      --delay <ms>      Extra wait after load before capture (default: 0)
-      --timeout <ms>    Navigation timeout (default: 30000)
-      --act <steps>     Drive the page before capturing, so states that only exist
-                        after an interaction can be shot: an open menu, a focused
-                        control, a selected row. Steps are separated by ; and each
-                        is kind:value, where kind is focus, click, press, type or
-                        wait (milliseconds). Selectors are CSS. Example:
-                        --act 'focus:button[aria-label="More actions"];press:Enter'
-                        Runs after the page has rendered and after --html-class,
-                        and before --inspect, so --inspect :focus reports where the
-                        keyboard actually landed.
-      --mock <spec.json>  Intercept matching requests before the page sees them, so a
-                        flow can be driven into a state the server will not serve
-                        yet. The file holds a "mocks" array; every entry has a "url"
-                        glob plus one of:
-                          "redirect": send the browser somewhere else (302), which is
-                            how you stand in for a server side redirect that is still
-                            behind a flag
-                          "merge": fetch the real response and deep merge this JSON
-                            patch into it, e.g. flipping one feature flag on while
-                            every other field stays real
-                          "json": replace the body outright, with optional "status"
-                        Matching is by URL glob and applies to navigations too. What
-                        the page renders is then a simulation, so label any capture
-                        built this way as simulated.
-      --html-class <list>  Add classes to <html> before capture; prefix a token
-                        with - to remove it first (e.g. --html-class=-light,dark
-                        forces a class-based dark theme; both the = form and the
-                        space form work). Waits 600ms for the repaint.
-      --allow-status    Skip the response-status guard. By default a non-2xx/3xx
-                        response fails the capture instead of writing a screenshot
-                        of an error page.
-      --expect-text <s> Fail the capture if the rendered page text does not
-                        contain this string.
-      --allow-blank     Skip the blank-render guard. By default a page whose
-                        body still has almost no text or elements after 10s of
-                        polling fails the capture instead of writing a blank
-                        PNG (SPAs render well after their load event). Every
-                        written file also gets a "sha256 <hex>" stderr line so
-                        batch captures can spot duplicate outputs without
-                        opening the images.
-      --inspect <selector>  Highlight the first match and draw a DevTools style panel
-                        over the shot: its outerHTML on the left, its computed
-                        role, name and ARIA state on the right. Long class and
-                        style values are shortened so the markup stays readable.
+QUICK CAPTURE (the normal thing)
+  -o, --output <path>       Output PNG path
+                            (default: .browsershot/captures/<timestamp>.png)
+      --size <WxH>          Viewport size, e.g. 1920x1080 (default: 1440x900)
+      --delay <ms>          Extra wait after load before capture (default: 0)
+      --full-page           Capture the whole scrollable page
+      --auto-open           Open the written capture with the platform viewer
+      --json                One JSON object on stdout with outputPath, bytes,
+                            sha256, inspectJsonPath, inspected, publishedUrl.
+                            Human readable lines stay on stderr. Without it the
+                            absolute output path is the first stdout line.
+      --auth                authstate one-step authenticated capture: discovers
+                            .testing-credentials.yaml by walking up from the
+                            working directory, runs "authstate ensure", and uses
+                            the jar named by the JSON envelope's "path" field.
+      --auth-user <name>    Credentials entry for --auth. Implies --auth.
+      --auth-credentials <path>  Credentials file instead of discovery.
+                            Implies the auth flow; combine with --auth-user.
+      --publish [dest]      rclone upload plus public link embed (e.g.
+                            gdrive:PR-Shots/<repo>/<branch>/). Without a value
+                            the saved "publish" profile key is the destination:
+                            browsershot config set publish <dest>
+      --publish-size <px>   Long-edge width for the embed (default: ${DEFAULT_EMBED_WIDTH})
+      --publish-label <text>  Alt text for the embed (default: file name)
+
+PROVE IT
+      --inspect <selector>       DevTools style panel over the shot: highlights
+                        the first match and draws its outerHTML plus its
+                        computed role, name and ARIA state over the capture.
       --inspect-attr <name>  Emphasise this attribute in the panel and report it
                         first in the JSON, e.g. --inspect-attr aria-expanded
       --inspect-json <path>  Write the recorded element data (role, name, every
@@ -116,23 +64,36 @@ OPTIONS
                         output path with a .json extension. Read this instead of
                         the PNG to assert on state without opening an image.
       --inspect-note <text>  Extra line printed at the bottom of the panel
+      --act <steps>     Drive the page before capturing, so states that only
+                        exist after an interaction can be shot: an open menu, a
+                        focused control, a selected row. Steps are separated by
+                        ; and each is kind:value, where kind is focus, click,
+                        press, type or wait (milliseconds). Selectors are CSS.
+                        Example:
+                        --act 'focus:button[aria-label="More actions"];press:Enter'
+                        Runs after the page has rendered and before --inspect,
+                        so --inspect :focus reports where the keyboard actually
+                        landed.
       --box <x,y,w,h[,color]>  Draw a rectangle outline on the PNG at those pixel
                         coordinates (top-left origin, post-scale); repeatable
       --marker <x,y[,color]>   Draw a point marker (filled dot) on the PNG at
                         that pixel coordinate; repeatable
-      --stdout          Write PNG bytes to stdout instead of a file
-      --verbose         Detailed Playwright progress on stderr: phase timings,
-                        failed requests, console errors, act step echo, mock hits
-      --publish <dest>  Upload the written file to an rclone remote dir (e.g.
-                        gdrive:PR-Shots/<repo>/<branch>/), make it public, and
-                        print a PR-ready inline Drive image embed for the PNG.
-      --publish-size <px>   Long-edge width for the PNG embed (default: ${DEFAULT_EMBED_WIDTH})
-      --publish-label <text>  Alt text for the PNG embed (default: file name)
-      --json            Print one JSON object on stdout carrying outputPath, bytes,
-                        sha256, inspectJsonPath, inspected and publishedUrl.
-                        Human readable lines stay on stderr. Without it the absolute
-                        output path is the first stdout line.
-      --auto-open       Open the written capture with the platform default app
+      --expect-text <s> Fail the capture if the rendered page text does not
+                        contain this string.
+      --allow-status    Skip the response-status guard. By default a non-2xx/3xx
+                        response fails the capture instead of writing a screenshot
+                        of an error page.
+      --allow-blank     Skip the blank-render guard. By default a page whose
+                        body still has almost no text or elements after 10s of
+                        polling fails the capture instead of writing a blank
+                        PNG (SPAs render well after their load event). Every
+                        written file also gets a "sha256 <hex>" stderr line so
+                        batch captures can spot duplicate outputs without
+                        opening the images.
+
+META
+      --verbose         Playwright progress detail on stderr: phase timings,
+                        failed requests, console errors, act step echo
   -h, --help            Show this help
   -v, --version         Show version
 `;
@@ -142,24 +103,15 @@ function parse() {
     args: normalizeArgv(process.argv.slice(2)),
     options: {
       output: { type: "string", short: "o" },
-      width: { type: "string" },
-      height: { type: "string" },
       size: { type: "string" },
-      preset: { type: "string" },
       "full-page": { type: "boolean", default: false },
-      cookies: { type: "string" },
       auth: { type: "boolean", default: false },
       "auth-user": { type: "string" },
       "auth-credentials": { type: "string" },
       "auth-purpose": { type: "string" },
       verbose: { type: "boolean", default: false },
-      scale: { type: "string" },
-      wait: { type: "string" },
       delay: { type: "string" },
-      timeout: { type: "string" },
-      "html-class": { type: "string" },
       act: { type: "string" },
-      mock: { type: "string" },
       "allow-blank": { type: "boolean", default: false },
       "allow-status": { type: "boolean", default: false },
       "expect-text": { type: "string" },
@@ -169,7 +121,6 @@ function parse() {
       "inspect-note": { type: "string" },
       box: { type: "string", multiple: true, default: [] },
       marker: { type: "string", multiple: true, default: [] },
-      stdout: { type: "boolean", default: false },
       json: { type: "boolean", default: false },
       publish: { type: "string" },
       "publish-size": { type: "string" },
@@ -229,14 +180,32 @@ export function normalizeArgv(argv: string[]): string[] {
   while (index < argv.length) {
     const token = argv[index]!;
     const next = argv[index + 1];
-    const isHtmlClassFlag = "--html-class" === token;
-    const nextIsDashValue = next != null && next.startsWith("-") && "--" !== next;
-    if (isHtmlClassFlag && nextIsDashValue) {
-      result.push(`--html-class=${next}`);
+    const isPublishFlag = "--publish" === token;
+    const nextIsValue = next != null && !next.startsWith("-") && "--" !== next;
+    if (isPublishFlag && nextIsValue) {
+      result.push(`--publish=${next}`);
       index = index + 2;
+    } else if (isPublishFlag) {
+      result.push("--publish=");
+      index = index + 1;
     } else {
       result.push(token);
       index = index + 1;
+    }
+  }
+  return result;
+}
+
+export function resolvePublishDest(explicit: string | null, saved: string | undefined): string | null {
+  let result: string | null = null;
+  if (explicit != null) {
+    if (explicit === "") {
+      if (saved == null || saved.trim() === "") {
+        throw new Error("bare --publish needs a saved destination; run: browsershot config set publish <dest>");
+      }
+      result = saved;
+    } else {
+      result = explicit;
     }
   }
   return result;
@@ -376,11 +345,11 @@ async function main() {
     }
     const json = Boolean(values.json) || profile.json === true;
 
-    if (json && values.stdout) {
-      fail("--json prints one JSON object on stdout; it cannot be combined with --stdout");
-    }
-    if (values.publish != null && values.stdout) {
-      fail("--publish needs a written file; it cannot be combined with --stdout");
+    let publishDest: string | null = null;
+    try {
+      publishDest = resolvePublishDest(values.publish ?? null, profile.publish);
+    } catch (e) {
+      fail((e as Error).message);
     }
 
     let publishSize = DEFAULT_EMBED_WIDTH;
@@ -404,68 +373,19 @@ async function main() {
       fail((e as Error).message);
     }
 
-    let width = 1440;
-    let height = 900;
-    if (values.preset != null) {
-      const preset = PRESETS[values.preset];
-      if (preset == null) {
-        fail(`--preset must be one of: ${Object.keys(PRESETS).join(", ")}`);
-      }
-      width = preset.width;
-      height = preset.height;
-    }
-    try {
-      if (values.width != null) {
-        width = intFlag("width", values.width);
-      }
-      if (values.height != null) {
-        height = intFlag("height", values.height);
-      }
-    } catch (e) {
-      fail((e as Error).message);
-    }
+    let viewport = { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT };
     if (values.size != null) {
       const size = parseSize(values.size);
       if (size == null) {
         fail(`--size must look like WxH (e.g. 1920x1080), got "${values.size}"`);
       }
-      width = size.width;
-      height = size.height;
-    }
-
-    let scale = 2;
-    if (values.scale != null) {
-      scale = Number(values.scale);
-      if (!(scale > 0)) {
-        fail("--scale must be a positive number");
-      }
-    }
-
-    let waitUntil: WaitUntil = "load";
-    if (values.wait != null) {
-      waitUntil = values.wait as WaitUntil;
-    }
-    if (!WAIT_EVENTS.includes(waitUntil)) {
-      fail(`--wait must be one of: ${WAIT_EVENTS.join(", ")}`);
+      viewport = size;
     }
 
     let delayMs = 0;
-    let timeoutMs = 30000;
     try {
       if (values.delay != null) {
         delayMs = intFlag("delay", values.delay);
-      }
-      if (values.timeout != null) {
-        timeoutMs = intFlag("timeout", values.timeout);
-      }
-    } catch (e) {
-      fail((e as Error).message);
-    }
-
-    let htmlClass: HtmlClassChange | undefined;
-    try {
-      if (values["html-class"] != null) {
-        htmlClass = parseHtmlClassFlag(values["html-class"]);
       }
     } catch (e) {
       fail((e as Error).message);
@@ -478,10 +398,7 @@ async function main() {
     if (values["auth-purpose"]) {
       fail("--auth-purpose was removed — use --auth-user");
     }
-    if (authRequested && values.cookies != null) {
-      fail("--cookies and --auth/--auth-user/--auth-credentials both choose the jar. Pass one of them.");
-    }
-    let cookiesPath = values.cookies;
+    let jarPath: string | undefined;
     if (authRequested) {
       try {
         let credentialsPath = values["auth-credentials"];
@@ -490,8 +407,7 @@ async function main() {
           process.stderr.write(`browsershot: using ${credentialsPath}\n`);
         }
         const user = savedAuthUser;
-        process.stderr.write(`browsershot: authenticating as ${user ?? "the default user"} (authstate ensure)\n`);
-        cookiesPath = await resolveAuthJar(
+        jarPath = await resolveAuthJar(
           { credentialsPath: credentialsPath as string, user: user as string | undefined },
           undefined,
           (chunk) => process.stderr.write(chunk),
@@ -503,9 +419,6 @@ async function main() {
         fail((e as Error).message, EXIT_FAILED);
       }
     }
-    if (cookiesPath != null && !existsSync(cookiesPath)) {
-      fail(`--cookies file not found: ${cookiesPath}`);
-    }
     const allowBlank = Boolean(values["allow-blank"]);
     const allowStatus = Boolean(values["allow-status"]);
     const expectText = values["expect-text"] == null ? profile.expectText : values["expect-text"];
@@ -515,7 +428,7 @@ async function main() {
       if (values.inspect.trim() === "") {
         fail("--inspect needs a CSS selector");
       }
-      inspect = { selector: values.inspect, attr: values["inspect-attr"], timeoutMs };
+      inspect = { selector: values.inspect, attr: values["inspect-attr"], timeoutMs: NAVIGATION_TIMEOUT_MS };
     }
     const inspectFooter = values["inspect-note"];
 
@@ -528,31 +441,16 @@ async function main() {
       fail((e as Error).message);
     }
 
-    let mocks: Mock[] | undefined;
-    try {
-      if (values.mock != null) {
-        mocks = parseMocks(readFileSync(values.mock, "utf8"));
-      }
-    } catch (e) {
-      fail((e as Error).message);
-    }
-
     const options = {
       url,
-      width,
-      height,
+      viewport,
       fullPage,
-      scale,
-      waitUntil,
       delayMs,
-      timeoutMs,
-      cookiesPath,
-      htmlClass,
+      cookiesPath: jarPath,
       allowBlank,
       inspect,
       inspectFooter,
       actions,
-      mocks,
       allowStatus,
       expectText,
       verbose,
@@ -584,57 +482,53 @@ async function main() {
     } catch (e) {
       fail((e as Error).message);
     }
-    if (values.stdout) {
-      process.stdout.write(png);
-    } else {
-      mkdirSync(dirname(out), { recursive: true });
-      writeFileSync(out, png);
-      success.outputPath = out;
-      success.bytes = png.length;
-      success.sha256 = sha256Hex(png);
-      process.stderr.write(`browsershot: wrote ${out} (${png.length} bytes)\n`);
-      process.stderr.write(`browsershot: sha256 ${success.sha256}\n`);
-      if (!json) {
-        process.stdout.write(`${out}\n`);
+    mkdirSync(dirname(out), { recursive: true });
+    writeFileSync(out, png);
+    success.outputPath = out;
+    success.bytes = png.length;
+    success.sha256 = sha256Hex(png);
+    process.stderr.write(`browsershot: wrote ${out} (${png.length} bytes)\n`);
+    process.stderr.write(`browsershot: sha256 ${success.sha256}\n`);
+    if (!json) {
+      process.stdout.write(`${out}\n`);
+    }
+    if (inspected != null) {
+      let jsonOut = inspectJsonPath(out);
+      if (values["inspect-json"] != null) {
+        jsonOut = values["inspect-json"];
       }
-      if (inspected != null) {
-        let jsonOut = inspectJsonPath(out);
-        if (values["inspect-json"] != null) {
-          jsonOut = values["inspect-json"];
+      try {
+        mkdirSync(dirname(jsonOut), { recursive: true });
+        writeFileSync(jsonOut, `${JSON.stringify(inspected, null, 2)}\n`);
+      } catch (e) {
+        fail(`wrote ${out}, but could not write ${jsonOut}: ${(e as Error).message}`, EXIT_WRITE_ERROR);
+      }
+      success.inspectJsonPath = jsonOut;
+      success.inspected = inspected;
+      process.stderr.write(`browsershot: inspected ${inspectSummary(inspected, values["inspect-attr"])}\n`);
+      process.stderr.write(`browsershot: element json ${jsonOut}\n`);
+    }
+    if (publishDest != null) {
+      let pngLabel = labelFromPath(out);
+      if (values["publish-label"] != null) {
+        pngLabel = values["publish-label"];
+      }
+      try {
+        const published = publish({ filePath: out, dest: publishDest, size: publishSize, label: pngLabel });
+        success.publishedUrl = published.url;
+        if (!json) {
+          process.stdout.write(`${published.markdown}\n`);
         }
-        try {
-          mkdirSync(dirname(jsonOut), { recursive: true });
-          writeFileSync(jsonOut, `${JSON.stringify(inspected, null, 2)}\n`);
-        } catch (e) {
-          fail(`wrote ${out}, but could not write ${jsonOut}: ${(e as Error).message}`, EXIT_WRITE_ERROR);
-        }
-        success.inspectJsonPath = jsonOut;
-        success.inspected = inspected;
-        process.stderr.write(`browsershot: inspected ${inspectSummary(inspected, values["inspect-attr"])}\n`);
-        process.stderr.write(`browsershot: element json ${jsonOut}\n`);
+      } catch (e) {
+        const failure = publishFailure(out, e as Error);
+        fail(failure.message, failure.code);
       }
-      if (values.publish != null) {
-        let pngLabel = labelFromPath(out);
-        if (values["publish-label"] != null) {
-          pngLabel = values["publish-label"];
-        }
-        try {
-          const published = publish({ filePath: out, dest: values.publish, size: publishSize, label: pngLabel });
-          success.publishedUrl = published.url;
-          if (!json) {
-            process.stdout.write(`${published.markdown}\n`);
-          }
-        } catch (e) {
-          const failure = publishFailure(out, e as Error);
-          fail(failure.message, failure.code);
-        }
-      }
-      if (json) {
-        process.stdout.write(`${JSON.stringify(success)}\n`);
-      }
-      if (profile.autoOpen === true || values["auto-open"]) {
-        openFile(out, (message) => process.stderr.write(`browsershot: warning: ${message}\n`));
-      }
+    }
+    if (json) {
+      process.stdout.write(`${JSON.stringify(success)}\n`);
+    }
+    if (profile.autoOpen === true || values["auto-open"]) {
+      openFile(out, (message) => process.stderr.write(`browsershot: warning: ${message}\n`));
     }
   }
 }

@@ -24,6 +24,15 @@ test("config commands set show path and unset saved values", () => {
   expect(run(root, "config", "show").stdout.toString()).not.toContain('"json"');
 });
 
+test("publish key round-trips through config set show and unset", () => {
+  const root = scratch();
+
+  expect(run(root, "config", "set", "publish", "gdrive:PR-Shots/myrepo/mybranch/").exitCode).toBe(0);
+  expect(run(root, "config", "show").stdout.toString()).toContain('"publish": "gdrive:PR-Shots/myrepo/mybranch/"');
+  expect(run(root, "config", "unset", "publish").exitCode).toBe(0);
+  expect(run(root, "config", "show").stdout.toString()).not.toContain('"publish"');
+});
+
 test("quick capture errors before browser launch when the saved URL is missing", () => {
   const root = scratch();
 
