@@ -17,6 +17,7 @@ build/
 .env
 .env.*
 .testing-credentials.yaml
+!test/fixtures/creds/.testing-credentials.yaml
 .browsershot-profiles/
 
 # local tooling, never commit
