@@ -2,8 +2,9 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { join } from "node:path";
 
 export interface ProfileConfig {
-  url?: string;
+  baseUrl?: string;
   authUser?: string;
+  expectElement?: string;
   expectText?: string;
   output?: string;
   json?: boolean;
@@ -17,7 +18,11 @@ interface ProfilePaths {
   captures: string;
 }
 
-const CONFIG_KEYS = new Set(["url", "auth-user", "expect-text", "output", "json", "auto-open", "publish"]);
+const aliases: Record<string, string> = {
+  url: "baseUrl", "base-url": "baseUrl", "auth-user": "authUser",
+  "expect-text": "expectText", "expect-element": "expectElement", "auto-open": "autoOpen",
+};
+const CONFIG_KEYS = new Set(["baseUrl", "base-url", "url", "authUser", "auth-user", "expectElement", "expect-element", "expectText", "expect-text", "output", "json", "autoOpen", "auto-open", "publish"]);
 
 export function profilePaths(root = process.cwd()): ProfilePaths {
   const directory = join(root, ".browsershot");
@@ -28,9 +33,14 @@ function validateConfig(config: unknown): ProfileConfig {
   if (config == null || typeof config !== "object" || Array.isArray(config)) {
     throw new Error("profile config must be a JSON object");
   }
+  const raw = config as Record<string, unknown>;
+  const normalizedInput: Record<string, unknown> = { ...raw };
+  if (raw.baseUrl !== undefined) delete normalizedInput.url;
+  else if (raw.url !== undefined) normalizedInput.baseUrl = raw.url;
+  delete normalizedInput.url;
   const result: ProfileConfig = {};
-  for (const [key, value] of Object.entries(config)) {
-    if (!["url", "authUser", "expectText", "output", "json", "autoOpen", "publish"].includes(key)) {
+  for (const [key, value] of Object.entries(normalizedInput)) {
+    if (!["baseUrl", "authUser", "expectElement", "expectText", "output", "json", "autoOpen", "publish", "url"].includes(key)) {
       throw new Error(`unknown profile setting: ${key}`);
     }
     if (["json", "autoOpen"].includes(key)) {
@@ -41,6 +51,9 @@ function validateConfig(config: unknown): ProfileConfig {
       throw new Error(`profile setting ${key} must be a non-empty string`);
     }
     (result as Record<string, unknown>)[key] = value;
+  }
+  if (result.baseUrl !== undefined) {
+    try { new URL(result.baseUrl); } catch { throw new Error("profile setting baseUrl must be an absolute URL"); }
   }
   return result;
 }
@@ -75,21 +88,21 @@ export function setProfileValue(root: string, name: string, rawValue?: string): 
   }
   const current = readProfile(root);
   const config = { ...current };
-  if (["json", "auto-open"].includes(name)) {
+  const property = aliases[name] ?? name;
+  if (["json", "autoOpen"].includes(property)) {
     if (rawValue != null) {
       throw new Error(`${name} does not take a value`);
     }
-    (config as Record<string, unknown>)[name === "json" ? "json" : "autoOpen"] = true;
+    (config as Record<string, unknown>)[property] = true;
   } else {
     if (rawValue == null || rawValue.trim() === "") {
       throw new Error(`${name} needs a non-empty value`);
     }
-    const property = name === "auth-user" ? "authUser" : name === "expect-text" ? "expectText" : name;
-    if (property === "url") {
+    if (property === "baseUrl") {
       try {
         new URL(rawValue);
       } catch {
-        throw new Error("url must be an absolute URL");
+        throw new Error("baseUrl must be an absolute URL");
       }
     }
     (config as Record<string, unknown>)[property] = rawValue;
@@ -103,7 +116,7 @@ export function unsetProfileValue(root: string, name: string): ProfileConfig {
     throw new Error(`unknown profile setting: ${name}`);
   }
   const config = { ...readProfile(root) } as Record<string, unknown>;
-  const property = name === "auth-user" ? "authUser" : name === "expect-text" ? "expectText" : name === "auto-open" ? "autoOpen" : name;
+  const property = aliases[name] ?? name;
   delete config[property];
   writeProfile(root, config);
   return config;

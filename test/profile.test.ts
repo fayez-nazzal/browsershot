@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -17,7 +17,7 @@ function scratch(): string {
 test("profile write and read preserve saved settings", () => {
   const root = scratch();
   const config: ProfileConfig = {
-    url: "http://localhost:8990/app#/workspaces/8",
+    baseUrl: "http://localhost:8990/app#/workspaces/8",
     authUser: "test-user",
     expectText: "DocClever",
     output: "/tmp/docclever.png",
@@ -47,4 +47,21 @@ test("quick paths append to the pathname without a hash route", () => {
 
 test("invalid quick paths are rejected", () => {
   expect(() => resolveQuickUrl("http://localhost:8990/app", "?query")).toThrow();
+});
+
+test("legacy url is normalized in memory without rewriting the file", () => {
+  const root = scratch();
+  mkdirSync(profilePaths(root).directory, { recursive: true });
+  const raw = { url: "https://legacy.example/app", authUser: "member", expectText: "Example" };
+  writeFileSync(profilePaths(root).config, JSON.stringify(raw));
+  const before = readFileSync(profilePaths(root).config, "utf8");
+  expect(readProfile(root)).toEqual({ baseUrl: raw.url, authUser: "member", expectText: "Example" });
+  expect(readFileSync(profilePaths(root).config, "utf8")).toBe(before);
+});
+
+test("canonical baseUrl wins over legacy url", () => {
+  const root = scratch();
+  mkdirSync(profilePaths(root).directory, { recursive: true });
+  writeFileSync(profilePaths(root).config, JSON.stringify({ url: "https://legacy.example", baseUrl: "https://canonical.example" }));
+  expect(readProfile(root).baseUrl).toBe("https://canonical.example");
 });

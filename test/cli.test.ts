@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { timestamp, normalizeUrl, parseSize, resolvePublishDest, sha256Hex, normalizeArgv } from "../src/cli.ts";
+import { timestamp, normalizeUrl, parseSize, resolvePublishDest, sha256Hex, normalizeArgv, resolveCaptureUrl, resolveRunDefaults } from "../src/cli.ts";
 
 test("timestamp matches YYYYMMDD-HHMMSS", () => {
   expect(timestamp()).toMatch(/^\d{8}-\d{6}$/);
@@ -78,4 +78,29 @@ test("resolvePublishDest rejects a bare --publish with no saved key", () => {
 test("resolvePublishDest returns null when publish is not requested", () => {
   expect(resolvePublishDest(null, "gdrive:saved/dir/")).toBeNull();
   expect(resolvePublishDest(null, undefined)).toBeNull();
+});
+
+test("resolveCaptureUrl keeps complete URLs independent of the saved base", () => {
+  const profile = { baseUrl: "https://example.com/app" };
+  expect(resolveCaptureUrl("https://other.example/pricing", {})).toBe("https://other.example/pricing");
+  expect(resolveCaptureUrl("https://other.example/pricing", profile)).toBe("https://other.example/pricing");
+  expect(resolveCaptureUrl("/pricing", profile)).toBe("https://example.com/app/pricing");
+  expect(() => resolveCaptureUrl("/pricing", {})).toThrow(/baseUrl/);
+});
+
+test("resolveRunDefaults applies saved settings and per-run replacements", () => {
+  const profile = { baseUrl: "https://example.com/app", authUser: "member", expectText: "Header", expectElement: "#header", json: true, autoOpen: true };
+  expect(resolveRunDefaults({ "expect-element": "#standalone" }, profile)).toMatchObject({ expectElement: "#standalone", expectText: undefined });
+  expect(resolveRunDefaults({}, profile)).toMatchObject({ expectText: "Header", expectElement: "#header", authRequested: true, json: true, autoOpen: true });
+  expect(resolveRunDefaults({ "no-auth": true, "no-expect": true, "no-json": true, "no-auto-open": true }, profile)).toMatchObject({ authRequested: false, expectText: undefined, expectElement: undefined, json: false, autoOpen: false });
+  expect(resolveRunDefaults({ "auth-credentials": "/tmp/creds" }, profile)).toMatchObject({ authUser: "member", authRequested: true, authCredentials: "/tmp/creds" });
+});
+
+test("resolveRunDefaults rejects contradictory or empty options", () => {
+  expect(() => resolveRunDefaults({ "no-auth": true, "auth-user": "admin" }, {})).toThrow(/conflict/);
+  expect(() => resolveRunDefaults({ "no-expect": true, "expect-text": "Ready" }, {})).toThrow(/conflict/);
+  expect(() => resolveRunDefaults({ json: true, "no-json": true }, {})).toThrow(/conflict/);
+  expect(() => resolveRunDefaults({ "auto-open": true, "no-auto-open": true }, {})).toThrow(/conflict/);
+  expect(() => resolveRunDefaults({ "expect-text": "  " }, {})).toThrow(/non-empty/);
+  expect(() => resolveRunDefaults({ "expect-element": "  " }, {})).toThrow(/non-empty/);
 });

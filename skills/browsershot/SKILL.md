@@ -1,40 +1,33 @@
 ---
 name: browsershot
-description: Use when a real browser capture is needed for a page or route and the target application has a browsershot project profile.
+description: Use when a real browser capture and machine-readable verification are needed for a page or route.
 license: MIT
-compatibility: Needs the `browsershot` binary on `PATH` and a target application repository with `.browsershot/config.json`.
+compatibility: Needs the `browsershot` binary on `PATH`; complete URLs need no profile, while quick routes need a saved base URL in the current directory.
 metadata:
   author: Fayez Nazzal
-  version: "2.0.0"
+  version: "2.1.0"
 ---
 
 # browsershot
 
-Use the project profile and the quick capture CLI. The source repository is
-`~/repos/tools/browsershot`.
-
-## Capture
-
-Run from the target application repository. It must contain the nearest
-`.browsershot/config.json`.
+Run from the target application repository. Choose a complete URL or a saved quick route:
 
 ```sh
-cd /path/to/application
-browsershot /route
+browsershot https://example.com/pricing --expect-text Pricing --json
+
+browsershot config set baseUrl https://example.com
+browsershot /pricing --expect-element '#header' --json
 ```
 
-The route is appended to the saved base URL. The PNG is written under
-`.browsershot/captures` unless the project profile sets another output path.
+Use `--act` for clicks, typing, key presses, or waits, and `--inspect` for evidence after those actions:
 
-Use the exact route supplied by the user. Add `--json` when a script needs the
-result. Read the JSON output for `outputPath`, `sha256` and `inspectJsonPath`.
+```sh
+browsershot /dashboard --act 'click:#menu' \
+  --inspect '#menu' --inspect-attr aria-expanded --json
+```
 
-## Rules
+Complete URLs do not require `.browsershot/config.json`. Quick paths require a known saved `baseUrl`; do not guess it. The legacy saved key `url` is accepted. Saved auth, assertions, output, JSON, and viewer settings can be overridden for one run with `--no-auth`, `--no-expect`, `--output`, `--no-json`, or `--no-auto-open`.
 
-- Check the current directory before running the command.
-- Do not run quick capture from `~/repos/tools/browsershot` unless it is the target application repository.
-- Do not guess or substitute a base URL.
-- If `.browsershot/config.json` is missing, locate the target application repository or ask for it.
-- Use `browsershot --help` and the source at `~/repos/tools/browsershot` for CLI details.
-- Assert on text or the inspect sidecar before trusting a capture.
-- Report the capture path and what the final frame proves.
+Read the single JSON object from stdout. Assert on `outputPath`, `sha256`, and `inspected` or `inspectJsonPath`; never read PNG bytes. `--expect-text` and `--expect-element` are pre-action readiness checks. `--inspect-attr` reports an attribute and does not compare it to an expected value. Report the absolute output path, the text or element verified, and any failure exit code.
+
+See the repository [`README.md`](../../README.md) for uncommon flags and publishing details.

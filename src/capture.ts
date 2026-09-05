@@ -16,6 +16,7 @@ export interface CaptureOptions {
   actions?: Action[];
   allowStatus?: boolean;
   expectText?: string;
+  expectElement?: string;
   log?: (message: string) => void;
   verbose?: boolean;
 }
@@ -39,6 +40,7 @@ const BLANK_TEXT_THRESHOLD = 20;
 const BLANK_ELEMENT_THRESHOLD = 15;
 const RENDER_POLL_INTERVAL_MS = 250;
 const RENDER_POLL_TIMEOUT_MS = 10000;
+export const ELEMENT_READY_TIMEOUT_MS = 10000;
 
 export function renderLooksBlank(stats: RenderStats): boolean {
   let result = false;
@@ -142,13 +144,21 @@ export async function preparePage(page: Page, o: CaptureOptions): Promise<void> 
   const started = Date.now();
   const response = await page.goto(o.url, { waitUntil: "load", timeout: NAVIGATION_TIMEOUT_MS });
   o.log?.(`page loaded in ${((Date.now() - started) / 1000).toFixed(1)}s`);
+  const httpStatus = response != null ? response.status() : null;
+  const finalUrl = response != null ? response.url() : page.url();
+  assertLanding({ httpStatus, finalUrl, bodyText: "" }, { allowStatus: Boolean(o.allowStatus) });
   o.log?.("waiting for render…");
   await waitForRender(page, o);
   if (o.delayMs > 0) {
     await page.waitForTimeout(o.delayMs);
   }
-  const httpStatus = response != null ? response.status() : null;
-  const finalUrl = response != null ? response.url() : page.url();
+  if (o.expectElement !== undefined) {
+    try {
+      await page.locator(`css=${o.expectElement}`).first().waitFor({ state: "visible", timeout: ELEMENT_READY_TIMEOUT_MS });
+    } catch (error) {
+      throw new Error(`--expect-element ${JSON.stringify(o.expectElement)} failed: ${(error as Error).message}`);
+    }
+  }
   let bodyText = "";
   if (o.expectText != null) {
     bodyText = await readBodyText(page);
