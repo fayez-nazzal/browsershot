@@ -84,6 +84,19 @@ test("structured names stay within common filesystem byte limits", () => {
   expect(Buffer.byteLength(components.at(-1)!)).toBeLessThanOrEqual(255);
 });
 
+test("queried structured names retain the query digest within filename byte limits", () => {
+  const queryKey = "filter".repeat(40);
+  const output = resolveOutputPath({
+    capturesDirectory: "/repo/.browsershot/captures",
+    url: `https://example.com/${"界".repeat(200)}?${queryKey}=late`,
+    label: "状".repeat(200),
+    now,
+  });
+  const filename = output.split("/").at(-1)!;
+  expect(Buffer.byteLength(filename, "utf8")).toBeLessThanOrEqual(255);
+  expect(filename).toMatch(/_q-[^_]+-[0-9a-f]{12}_状+_2026-09-05_14-30-12\.png$/);
+});
+
 test("structured names avoid Windows reserved path components", () => {
   const output = resolveOutputPath({ capturesDirectory: "/repo/.browsershot/captures", url: "https://example.com/con", group: "NUL", label: "LPT1", now });
   expect(output).toContain("/_NUL/");

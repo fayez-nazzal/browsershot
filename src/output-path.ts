@@ -206,5 +206,7 @@ export function resolveOutputPath(options: ResolveOutputPathOptions): string {
   const directories = options.group == null ? [] : validateOutputGroup(options.group, values);
   const label = options.label == null ? "" : `_${validateOutputLabel(options.label, values)}`;
   const query = values.query === "" ? "" : `_q-${values.query}`;
-  return join(options.capturesDirectory, ...directories, values.host, `${values.route}${query}${label}_${values.timestamp}.png`);
+  const suffix = `${query}${label}_${values.timestamp}.png`;
+  const route = truncateUtf8(values.route, 255 - Buffer.byteLength(suffix, "utf8"));
+  return join(options.capturesDirectory, ...directories, values.host, `${route}${suffix}`);
 }
