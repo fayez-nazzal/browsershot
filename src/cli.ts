@@ -3,7 +3,7 @@
 import { parseArgs } from "node:util";
 import packageJson from "../package.json";
 import { DEFAULT_EMBED_WIDTH } from "./publish.ts";
-import { ExitError, EXIT_FAILED, UsageError } from "./exit-codes.ts";
+import { ExitError, EXIT_FAILED, toUsageError, UsageError } from "./exit-codes.ts";
 import { profilePaths, readProfile, setProfileValue, unsetProfileValue } from "./profile.ts";
 import { resolveRunOptions, type CaptureFlags } from "./run-options.ts";
 import { runCapture } from "./run-capture.ts";
@@ -234,14 +234,6 @@ function fail(error: unknown): never {
   }
   process.stderr.write(`browsershot: ${message}\n`);
   process.exit(code);
-}
-
-function toUsageError(error: unknown): UsageError {
-  let result = new UsageError((error as Error).message);
-  if (error instanceof UsageError) {
-    result = error;
-  }
-  return result;
 }
 
 function parse(): ReturnType<typeof parseCliArgs> {

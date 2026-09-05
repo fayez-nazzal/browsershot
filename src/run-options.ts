@@ -7,7 +7,7 @@ import {
   VIEWPORT_WIDTH,
   type CaptureOptions,
 } from "./capture.ts";
-import { UsageError } from "./exit-codes.ts";
+import { toUsageError, UsageError } from "./exit-codes.ts";
 import { resolveOutputPath } from "./output-path.ts";
 import type { ProfileConfig } from "./profile-settings.ts";
 import { resolveQuickUrl, type ProfilePaths } from "./profile.ts";
@@ -58,12 +58,6 @@ interface Expectations {
 
 type ResolvedAuth = ResolvedRunOptions["auth"];
 type ResolvedPublish = ResolvedRunOptions["publish"];
-
-function usageError(error: unknown): UsageError {
-  if (error instanceof UsageError) return error;
-  if (error instanceof Error) return new UsageError(error.message);
-  return new UsageError(String(error));
-}
 
 function nonEmptyFlag(name: string, value: string | undefined): string | undefined {
   if (value !== undefined && value.trim() === "") {
@@ -235,7 +229,7 @@ export function resolveCaptureUrl(
     }
     return normalizeUrl(positional);
   } catch (error) {
-    throw usageError(error);
+    throw toUsageError(error);
   }
 }
 
@@ -300,6 +294,6 @@ export function resolveRunOptions(input: ResolveRunOptionsInput): ResolvedRunOpt
       },
     };
   } catch (error) {
-    throw usageError(error);
+    throw toUsageError(error);
   }
 }

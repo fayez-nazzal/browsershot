@@ -27,6 +27,18 @@ export class UsageError extends ExitError {
   }
 }
 
+export function toUsageError(error: unknown): UsageError {
+  let message = String(error);
+  if (error instanceof Error) {
+    message = error.message;
+  }
+  let result = new UsageError(message);
+  if (error instanceof UsageError) {
+    result = error;
+  }
+  return result;
+}
+
 export interface FailureExit {
   message: string;
   code: ExitCode;

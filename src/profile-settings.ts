@@ -91,14 +91,10 @@ export function validateProfileConfig(input: unknown): ProfileConfig {
   }
   const raw = input as Record<string, unknown>;
   const normalizedInput: Record<string, unknown> = { ...raw };
-  if (raw.baseUrl !== undefined) {
-    delete normalizedInput.url;
-  } else if (raw.url !== undefined) {
+  if (raw.baseUrl === undefined && raw.url !== undefined) {
     normalizedInput.baseUrl = raw.url;
-    delete normalizedInput.url;
-  } else {
-    delete normalizedInput.url;
   }
+  delete normalizedInput.url;
   const result: ProfileConfig = {};
   for (const [key, value] of Object.entries(normalizedInput)) {
     if (!Object.hasOwn(PROFILE_SETTINGS, key)) {

@@ -8,8 +8,6 @@ import {
 } from "./profile-settings.ts";
 import { UsageError } from "./exit-codes.ts";
 
-export type { ProfileConfig } from "./profile-settings.ts";
-
 export interface ProfilePaths {
   directory: string;
   config: string;

@@ -7,9 +7,9 @@ import {
   readProfile,
   resolveQuickUrl,
   writeProfile,
-  type ProfileConfig,
 } from "../src/profile.ts";
 import { UsageError } from "../src/exit-codes.ts";
+import type { ProfileConfig } from "../src/profile-settings.ts";
 
 function scratch(): string {
   return mkdtempSync(join(tmpdir(), "browsershot-profile-test-"));
