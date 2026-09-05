@@ -18,42 +18,61 @@ import { createRunTmpDir, ensureWorkspace, removeRunTmpDir } from "./workspace.t
 
 export const VERSION = `${packageJson.version}-alpha`;
 
-const HELP = `browsershot ${VERSION} — capture a web page to a PNG
+const HELP = `browsershot ${VERSION} — capture a page and return evidence
+
+START HERE
+  Complete URL, no setup:
+    browsershot https://example.com/pricing
+
+  Saved route, convenient for a project:
+    browsershot config set baseUrl https://example.com
+    browsershot /pricing
+
+  A complete URL uses itself. A path beginning with / is appended to the saved
+  baseUrl in the current directory. The legacy saved key url is accepted.
 
 USAGE
   browsershot <url-or-path> [options]
-  browsershot config <set|unset|show|path> [name] [value]
+  browsershot config set <name> [value]
+  browsershot config unset <name>
+  browsershot config show | path
 
-  Loads the page headless in the bundled Chromium headless shell and saves a
-  screenshot of the viewport. Hardcoded capture defaults: viewport 1440x900 at
-  2x (retina), wait event load, navigation timeout 30s.
-
-QUICK CAPTURE (the normal thing)
+CAPTURE
   -o, --output <path>       Output PNG path
                             (default: .browsershot/captures/<timestamp>.png)
-      --size <WxH>          Viewport size, e.g. 1920x1080 (default: 1440x900)
+      --size <WxH>          Viewport size (default: 1440x900)
       --delay <ms>          Extra wait after load before capture (default: 0)
       --full-page           Capture the whole scrollable page
       --auto-open           Open the written capture with the platform viewer
-      --json                One JSON object on stdout with outputPath, bytes,
-                            sha256, inspectJsonPath, inspected, publishedUrl.
-                            Human readable lines stay on stderr. Without it the
-                            absolute output path is the first stdout line.
-      --auth                authstate one-step authenticated capture: discovers
-                            .testing-credentials.yaml by walking up from the
-                            working directory, runs "authstate ensure", and uses
-                            the jar named by the JSON envelope's "path" field.
-      --auth-user <name>    Credentials entry for --auth. Implies --auth.
-      --auth-credentials <path>  Credentials file instead of discovery.
-                            Implies the auth flow; combine with --auth-user.
-      --publish [dest]      rclone upload plus public link embed (e.g.
-                            gdrive:PR-Shots/<repo>/<branch>/). Without a value
-                            the saved "publish" profile key is the destination:
-                            browsershot config set publish <dest>
-      --publish-size <px>   Long-edge width for the embed (default: ${DEFAULT_EMBED_WIDTH})
-      --publish-label <text>  Alt text for the embed (default: file name)
+      --no-auto-open        Disable a saved autoOpen setting for this run
+      --json                Print one JSON result instead of a path
+      --no-json             Disable a saved json setting for this run
 
-PROVE IT
+  Defaults are the load event, a 30-second navigation timeout, and a 1440x900
+  viewport at 2x device scale. Each capture uses one browser launch and one
+  screenshot.
+READINESS AND SAFETY
+      --expect-text <text>  Require this case-sensitive text before actions
+      --expect-element <selector>
+                            Wait up to 10 seconds for the first matching CSS
+                            element to become visible before actions
+      --no-expect           Disable saved and explicit content assertions
+      --allow-status        Capture non-2xx/3xx responses
+      --allow-blank         Capture pages that still look blank after polling
+
+  Explicit --expect-text or --expect-element flags replace the saved assertion
+  set. If both are present, both must pass. Positive and negative options for
+  the same setting are usage errors. Status and blank-render guards stay active
+  when --no-expect is used.
+
+AUTHENTICATION
+      --auth                Discover credentials and run authstate
+      --auth-user <name>    Use this credentials entry; implies --auth
+      --auth-credentials <path>
+                            Use this credentials file instead of discovery
+      --no-auth             Disable saved authentication for this run
+
+INTERACTION AND INSPECTION
       --inspect <selector>       DevTools style panel over the shot: highlights
                         the first match and draws its outerHTML plus its
                         computed role, name and ARIA state over the capture.
@@ -78,23 +97,37 @@ PROVE IT
                         coordinates (top-left origin, post-scale); repeatable
       --marker <x,y[,color]>   Draw a point marker (filled dot) on the PNG at
                         that pixel coordinate; repeatable
-      --expect-text <s> Fail the capture if the rendered page text does not
-                        contain this string.
-      --expect-element <selector> Wait for the first matching visible element.
-      --no-expect          Disable saved and explicit content assertions.
-      --no-auth            Disable saved authentication for this capture.
-      --no-json            Override saved JSON output for this capture.
-      --no-auto-open       Override saved viewer opening for this capture.
-      --allow-status    Skip the response-status guard. By default a non-2xx/3xx
-                        response fails the capture instead of writing a screenshot
-                        of an error page.
-      --allow-blank     Skip the blank-render guard. By default a page whose
-                        body still has almost no text or elements after 10s of
-                        polling fails the capture instead of writing a blank
-                        PNG (SPAs render well after their load event). Every
-                        written file also gets a "sha256 <hex>" stderr line so
-                        batch captures can spot duplicate outputs without
-                        opening the images.
+
+  Actions run after readiness and before inspection. Steps are separated by ;
+  and use focus, click, press, type or wait. Selectors are CSS.
+  Example: --act 'click:#menu;wait:250'
+
+PUBLISH
+      --publish [dest]      Upload with rclone and print a public embed
+      --publish-size <px>   Embed long-edge width (default: ${DEFAULT_EMBED_WIDTH})
+      --publish-label <text> Embed alt text (default: file name)
+
+PUBLISHING RULES
+  A destination passed to --publish wins. Bare --publish uses the saved publish
+  setting and fails with usage error 2 if none is saved.
+
+OUTPUT AND ERRORS
+  Without --json, the absolute PNG path is the first stdout line. With --json,
+  stdout is exactly one object with outputPath, bytes, sha256, inspectJsonPath,
+  inspected and publishedUrl. Human diagnostics are on stderr.
+
+  Exit 0  capture written
+  Exit 1  page guard or capture failure
+  Exit 2  invalid command, option or conflicting flags
+  Exit 3  authstate or credentials environment failure
+  Exit 4  PNG written but inspection sidecar failed
+  Exit 5  PNG written but publishing failed
+
+CONFIGURATION
+  Canonical saved names: baseUrl, authUser, expectElement, expectText, output,
+  json, autoOpen and publish. Kebab-case aliases are accepted for config set
+  and unset, including base-url, auth-user, expect-element, expect-text and
+  auto-open. Reads never rewrite the config file.
 
 META
       --verbose         Playwright progress detail on stderr: phase timings,
