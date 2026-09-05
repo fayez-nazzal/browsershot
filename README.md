@@ -1,94 +1,83 @@
 # browsershot
 
-[![CI](https://github.com/fayez-nazzal/browsershot/actions/workflows/ci.yml/badge.svg)](https://github.com/fayez-nazzal/browsershot/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-
-Capture any web page to a PNG from one command.
-
-## Quick start
+Capture a page to a PNG from one command. Install the binary and Chromium once:
 
 ```sh
-bun install && bun playwright install chromium   # once
-bun run build && bun link                        # once
-
-browsershot example.com                          # -> .browsershot/captures/<timestamp>.png
+bun install && bun playwright install chromium
+bun run build && bun link
 ```
 
-## Features
+## Capture a page
 
-## Act suport
-
-Drive the page with interactive actions before taking the screenshot
+Use a complete URL without project setup:
 
 ```sh
-browsershot example.com/dashboard --act 'click:#menu-button' # Page screenshot with `menu` open
+browsershot https://example.com/pricing
 ```
 
-## Inspect support
-
-Use browser inspect to see what the interaction actually produced:
+For a route, save the application base URL in the current directory:
 
 ```sh
-browsershot example.com/dashboard --act 'click:#menu-button' --inspect '#menu' --inspect-attr aria-expanded
-
-# Output: inspected role=button name="Menu" aria-expanded=true
+browsershot config set baseUrl https://example.com
+browsershot /pricing
 ```
 
-The `--inspect` run writes a JSON sidecar next to the PNG with the element's role, name, attributes and markup. This can help you asserting things.
+The config is `.browsershot/config.json` in the current directory. A quick path is appended to the saved URL, including hash routes. A complete URL always uses itself and never gets prefixed by the saved base. `http://`, host shorthand, and existing file URL behavior remain supported.
 
-## Asserting guards
+The default output is an absolute path under `.browsershot/captures/<timestamp>.png`. Use `-o, --output <path>` for a different file, `--size WxH`, `--full-page`, or `--delay <ms>` when needed.
 
-There is also guards support to fail the full command: e.p wrong HTTP status, missing `--expect-text`, or a page that never rendered. `--allow-status` and `--allow-blank` skip them.
+## Save defaults and override one capture
 
-## Sign in
-
-You can take screenshot of authenticated pages using, I integrated my tool [authstate](https://github.com/fayez-nazzal/authstate) into browsershot for authentication support.
+Supported saved settings are `baseUrl`, `authUser`, `expectElement`, `expectText`, `output`, `json`, `autoOpen`, and `publish`:
 
 ```sh
-browsershot example.com/account --auth
+browsershot config set expectElement '#header'
+browsershot config set authUser member
+browsershot config set json
+browsershot config show
+browsershot config unset expectElement
 ```
 
-It discovers `.testing-credentials.yaml`, logs in, and captures with the jar. `--auth-user` picks an account.
+For one capture, use `--auth-user`, `--auth-credentials`, `--auth`, `--no-auth`, `--expect-text`, `--expect-element`, `--no-expect`, `--output`, `--json`, `--no-json`, `--auto-open`, and `--no-auto-open`. Explicit assertion flags replace the saved assertion set. If both text and element assertions are present, both must pass. `--no-expect` disables only content assertions; HTTP status and blank-render guards remain active.
 
-## Publish
+`--expect-element` waits up to 10 seconds for the first matching CSS element to be visible before actions run. The first match is used, so prefer a specific selector. Positive and negative flags for one concern are usage errors.
+
+The legacy config key `url` and kebab-case names such as `base-url`, `auth-user`, `expect-text`, `expect-element`, and `auto-open` are accepted. Reads normalize `url` to `baseUrl` in memory without rewriting the file; explicit config writes use canonical names.
+
+## Actions and checks
+
+Actions run after readiness and before inspection and the screenshot:
 
 ```sh
-browsershot config set publish "gdrive:shots/my-repo/my-branch/"
-browsershot example.com --publish
+browsershot https://example.com/dashboard \
+  --act 'click:#menu' \
+  --inspect '#menu' --inspect-attr aria-expanded --json
 ```
 
-Uploads to an `rclone` remote and prints a ready-to-paste image embed. Explicit `--publish <dest>` overrides the saved key.
+`--inspect` records the first matching element and writes a JSON sidecar. `--inspect-attr` reports the attribute; it does not assert a required value. With `--json`, stdout contains one object with the stable fields `outputPath`, `bytes`, `sha256`, `inspectJsonPath`, `inspected`, and `publishedUrl`. Without it, the absolute output path is the first stdout line. Diagnostics are on stderr. Check the JSON or sidecar and never read PNG bytes into agent context.
 
-## Profile
+`--expect-text` is a case-sensitive pre-action body-text check. `--allow-status` allows non-success HTTP responses, and `--allow-blank` allows sparse pages. Guard failures exit `1`; usage errors exit `2`.
 
-Save settings per project in `.browsershot/config.json`:
+## Authentication and publishing
 
-| Key | Saves |
-|---|---|
-| `url` | Base URL, so `browsershot /route` just works |
-| `output` | Where captures land |
-| `auth-user` | Account for `--auth` |
-| `expect-text` | Text that must render |
-| `publish` | Default rclone destination |
-| `json` | Always print JSON |
-| `auto-open` | Always open the capture |
+`--auth` discovers `.testing-credentials.yaml` and uses `authstate` to create a storage-state jar. `--auth-user` implies `--auth`; `--auth-credentials` selects the credentials file. Credentials and jar paths are never saved in the profile.
 
 ```sh
-browsershot config set url "http://localhost:8990/app#/workspaces/8"
-browsershot /clients-needing-attention
+browsershot https://example.com/account --auth --auth-user member --json
 ```
 
-## Output
-
-Every run prints the absolute PNG path on stdout. Add `--json` for one machine readable object: `outputPath`, `bytes`, `sha256`, `inspectJsonPath`, `inspected`, `publishedUrl`.
-
-## For agents
-
-Install the bundled skill, or just point your agent at [`AGENTS.md`](AGENTS.md) for recipes and traps.
+Save a publish destination or provide it for one run:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/fayez-nazzal/browsershot/main/scripts/install-skill.sh | bash
+browsershot config set publish gdrive:shots/my-repo/my-branch/
+browsershot /pricing --publish
+browsershot /pricing --publish gdrive:other/dir/
 ```
+
+Publishing keeps ownership with the existing `rclone` integration. A publish failure after writing the PNG exits `5` and keeps the file.
+
+See `browsershot --help` for the complete flag list. Agents can use the short workflow in [`AGENTS.md`](AGENTS.md) and the installed [`skills/browsershot/SKILL.md`](skills/browsershot/SKILL.md).
 
 ## License
 
-MIT. See [`LICENSE`](LICENSE). Contributions welcome via [`CONTRIBUTING.md`](CONTRIBUTING.md).
+MIT. See [`LICENSE`](LICENSE).

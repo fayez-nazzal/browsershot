@@ -24,6 +24,17 @@ test("config commands set show path and unset saved values", () => {
   expect(run(root, "config", "show").stdout.toString()).not.toContain('"json"');
 });
 
+test("canonical and legacy config aliases write canonical settings", () => {
+  const root = scratch();
+  expect(run(root, "config", "set", "url", "https://legacy.example").exitCode).toBe(0);
+  expect(run(root, "config", "set", "expect-element", "#header").exitCode).toBe(0);
+  const shown = run(root, "config", "show").stdout.toString();
+  expect(shown).toContain('"baseUrl": "https://legacy.example"');
+  expect(shown).toContain('"expectElement": "#header"');
+  expect(run(root, "config", "unset", "url").exitCode).toBe(0);
+  expect(run(root, "config", "show").stdout.toString()).not.toContain("baseUrl");
+});
+
 test("publish key round-trips through config set show and unset", () => {
   const root = scratch();
 
@@ -39,7 +50,7 @@ test("quick capture errors before browser launch when the saved URL is missing",
   const result = run(root, "/clients-needing-attention");
 
   expect(result.exitCode).toBe(2);
-  expect(result.stderr.toString()).toContain("quick capture needs a saved url");
+  expect(result.stderr.toString()).toContain("quick capture needs a saved baseUrl");
 });
 
 test("invalid configuration is a usage error", () => {

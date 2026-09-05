@@ -80,6 +80,11 @@ PROVE IT
                         that pixel coordinate; repeatable
       --expect-text <s> Fail the capture if the rendered page text does not
                         contain this string.
+      --expect-element <selector> Wait for the first matching visible element.
+      --no-expect          Disable saved and explicit content assertions.
+      --no-auth            Disable saved authentication for this capture.
+      --no-json            Override saved JSON output for this capture.
+      --no-auto-open       Override saved viewer opening for this capture.
       --allow-status    Skip the response-status guard. By default a non-2xx/3xx
                         response fails the capture instead of writing a screenshot
                         of an error page.
@@ -98,9 +103,9 @@ META
   -v, --version         Show version
 `;
 
-function parse() {
+export function parseCliArgs(argv: string[]) {
   return parseArgs({
-    args: normalizeArgv(process.argv.slice(2)),
+    args: normalizeArgv(argv),
     options: {
       output: { type: "string", short: "o" },
       size: { type: "string" },
@@ -115,6 +120,11 @@ function parse() {
       "allow-blank": { type: "boolean", default: false },
       "allow-status": { type: "boolean", default: false },
       "expect-text": { type: "string" },
+      "expect-element": { type: "string" },
+      "no-expect": { type: "boolean", default: false },
+      "no-auth": { type: "boolean", default: false },
+      "no-json": { type: "boolean", default: false },
+      "no-auto-open": { type: "boolean", default: false },
       inspect: { type: "string" },
       "inspect-attr": { type: "string" },
       "inspect-json": { type: "string" },
@@ -131,6 +141,58 @@ function parse() {
     },
     allowPositionals: true,
   });
+}
+
+function parse() { return parseCliArgs(process.argv.slice(2)); }
+
+export interface RunDefaultFlags {
+  auth?: boolean; "auth-user"?: string; "auth-credentials"?: string; "no-auth"?: boolean;
+  "expect-text"?: string; "expect-element"?: string; "no-expect"?: boolean;
+  json?: boolean; "no-json"?: boolean; "auto-open"?: boolean; "no-auto-open"?: boolean;
+}
+
+export interface RunDefaults {
+  authRequested: boolean; authUser?: string; authCredentials?: string;
+  expectText?: string; expectElement?: string; json: boolean; autoOpen: boolean;
+}
+
+function nonEmptyFlag(name: string, value: string | undefined): string | undefined {
+  if (value !== undefined && value.trim() === "") throw new Error(`--${name} needs a non-empty value`);
+  return value;
+}
+
+export function resolveRunDefaults(flags: RunDefaultFlags, profile: ReturnType<typeof readProfile>): RunDefaults {
+  if (flags["no-auth"] === true && (flags.auth === true || flags["auth-user"] !== undefined || flags["auth-credentials"] !== undefined)) {
+    throw new Error("conflict between --no-auth and positive auth options");
+  }
+  if (flags["no-expect"] === true && (flags["expect-text"] !== undefined || flags["expect-element"] !== undefined)) {
+    throw new Error("conflict between --no-expect and positive expectation options");
+  }
+  if (flags["no-json"] === true && flags.json === true) throw new Error("conflict between --no-json and --json");
+  if (flags["no-auto-open"] === true && flags["auto-open"] === true) throw new Error("conflict between --no-auto-open and --auto-open");
+  const authUser = nonEmptyFlag("auth-user", flags["auth-user"] ?? profile.authUser);
+  const authRequested = flags["no-auth"] === true ? false : Boolean(flags.auth || authUser !== undefined || flags["auth-credentials"] !== undefined);
+  const explicitExpectation = flags["expect-text"] !== undefined || flags["expect-element"] !== undefined;
+  const expectations = flags["no-expect"] === true ? {} : explicitExpectation
+    ? { expectText: nonEmptyFlag("expect-text", flags["expect-text"]), expectElement: nonEmptyFlag("expect-element", flags["expect-element"]) }
+    : { expectText: profile.expectText, expectElement: profile.expectElement };
+  return {
+    authRequested,
+    authUser,
+    authCredentials: flags["auth-credentials"],
+    expectText: expectations.expectText,
+    expectElement: expectations.expectElement,
+    json: flags["no-json"] === true ? false : Boolean(flags.json || profile.json),
+    autoOpen: flags["no-auto-open"] === true ? false : Boolean(flags["auto-open"] || profile.autoOpen),
+  };
+}
+
+export function resolveCaptureUrl(positional: string, profile: ReturnType<typeof readProfile>): string {
+  if (positional.startsWith("/")) {
+    if (profile.baseUrl == null) throw new Error("quick capture needs a saved baseUrl; run: browsershot config set baseUrl <url>");
+    return resolveQuickUrl(profile.baseUrl, positional);
+  }
+  return normalizeUrl(positional);
 }
 
 export function timestamp(): string {
@@ -330,20 +392,13 @@ async function main() {
     let url = "";
     {
       const positional = positionals[0]!;
-      if (positional.startsWith("/")) {
-        if (profile.url == null) {
-          fail("quick capture needs a saved url; run: browsershot config set url <url>");
-        }
-        try {
-          url = resolveQuickUrl(profile.url, positional);
-        } catch (e) {
-          fail((e as Error).message);
-        }
-      } else {
-        url = normalizeUrl(positional);
-      }
+      try { url = resolveCaptureUrl(positional, profile); } catch (e) { fail((e as Error).message); }
     }
-    const json = Boolean(values.json) || profile.json === true;
+    let defaults: RunDefaults;
+    try {
+      defaults = resolveRunDefaults(values, profile);
+    } catch (e) { fail((e as Error).message); }
+    const json = defaults.json;
 
     let publishDest: string | null = null;
     try {
@@ -393,20 +448,18 @@ async function main() {
 
     let fullPage = Boolean(values["full-page"]);
     const verbose = Boolean(values.verbose);
-    const savedAuthUser = values["auth-user"] == null ? profile.authUser : values["auth-user"];
-    const authRequested = Boolean(values.auth) || savedAuthUser != null || values["auth-credentials"] != null;
     if (values["auth-purpose"]) {
       fail("--auth-purpose was removed — use --auth-user");
     }
     let jarPath: string | undefined;
-    if (authRequested) {
+    if (defaults.authRequested) {
       try {
-        let credentialsPath = values["auth-credentials"];
+        let credentialsPath = defaults.authCredentials;
         if (credentialsPath == null) {
           credentialsPath = discoverAuthCredentials(process.cwd());
           process.stderr.write(`browsershot: using ${credentialsPath}\n`);
         }
-        const user = savedAuthUser;
+        const user = defaults.authUser;
         jarPath = await resolveAuthJar(
           { credentialsPath: credentialsPath as string, user: user as string | undefined },
           undefined,
@@ -421,7 +474,8 @@ async function main() {
     }
     const allowBlank = Boolean(values["allow-blank"]);
     const allowStatus = Boolean(values["allow-status"]);
-    const expectText = values["expect-text"] == null ? profile.expectText : values["expect-text"];
+    const expectText = defaults.expectText;
+    const expectElement = defaults.expectElement;
 
     let inspect: InspectOptions | undefined;
     if (values.inspect != null) {
@@ -453,6 +507,7 @@ async function main() {
       actions,
       allowStatus,
       expectText,
+      expectElement,
       verbose,
       log: (message: string) => process.stderr.write(`browsershot: ${message}\n`),
     };
@@ -527,7 +582,7 @@ async function main() {
     if (json) {
       process.stdout.write(`${JSON.stringify(success)}\n`);
     }
-    if (profile.autoOpen === true || values["auto-open"]) {
+    if (defaults.autoOpen) {
       openFile(out, (message) => process.stderr.write(`browsershot: warning: ${message}\n`));
     }
   }
