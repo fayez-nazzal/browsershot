@@ -54,6 +54,15 @@ test("profile rejects unknown output placeholders when saved", () => {
   expect(() => writeProfile(root, { label: "{timstamp}" })).toThrow("unknown output placeholder");
 });
 
+test("profile output templates accept query and reject misspelled placeholders", () => {
+  const root = scratch();
+  for (const config of [{ output: "{query}.png" }, { group: "shots-{query}" }, { label: "query-{query}" }]) {
+    writeProfile(root, config);
+    expect(readProfile(root)).toEqual(config);
+  }
+  expect(() => writeProfile(root, { output: "{qurey}.png" })).toThrow("unknown output placeholder");
+});
+
 test("profile rejects structured names that cannot produce safe paths", () => {
   const root = scratch();
   expect(() => writeProfile(root, { group: "/absolute" })).toThrow("relative path");

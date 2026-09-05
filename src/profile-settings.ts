@@ -28,6 +28,7 @@ const TEMPLATE_EXAMPLE: OutputTemplateValues = {
   timestamp: "2026-09-05_14-30-12",
   host: "example.com",
   route: "pricing",
+  query: "filter-a31f82c4d901",
 };
 
 function absoluteUrl(value: string): void {
@@ -38,7 +39,7 @@ function absoluteUrl(value: string): void {
   }
 }
 
-export const PROFILE_SETTINGS = {
+export const PROFILE_SETTINGS: { [Name in ProfileSettingName]-?: ProfileSettingDefinition } = {
   baseUrl: { kind: "string", aliases: ["base-url", "url"], validate: absoluteUrl },
   authUser: { kind: "string", aliases: ["auth-user"] },
   authRedirect: { kind: "string", aliases: ["auth-redirect"] },
@@ -50,7 +51,7 @@ export const PROFILE_SETTINGS = {
   json: { kind: "boolean" },
   autoOpen: { kind: "boolean", aliases: ["auto-open"] },
   publish: { kind: "string" },
-} satisfies { [Name in ProfileSettingName]-?: ProfileSettingDefinition };
+};
 
 export const PROFILE_SETTING_NAMES = Object.freeze(
   Object.keys(PROFILE_SETTINGS) as ProfileSettingName[],

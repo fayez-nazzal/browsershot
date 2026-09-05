@@ -13,7 +13,7 @@ test("the registry contains every persistent setting exactly once", () => {
     "baseUrl", "authUser", "authRedirect", "expectElement", "expectText",
     "output", "group", "label", "json", "autoOpen", "publish",
   ]);
-  expect(Object.keys(PROFILE_SETTINGS)).toEqual(PROFILE_SETTING_NAMES);
+  expect(Object.keys(PROFILE_SETTINGS)).toEqual([...PROFILE_SETTING_NAMES]);
   expect(PROFILE_SETTINGS.json.kind).toBe("boolean");
   expect(PROFILE_SETTINGS.autoOpen.kind).toBe("boolean");
   expect(PROFILE_SETTINGS.baseUrl.kind).toBe("string");
