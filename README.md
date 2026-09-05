@@ -15,7 +15,7 @@ Browsershot works great with AI Agents, it's efficient enough to support AI Agen
 - Helps AI Agents do design work, it can take screenshots of implemented web pages and compare with design reference using vision.
 - Helps write PRs with screenshot evidence of the implemented pages.
 - Supports structured JSON output per command so AI Agents get quick summaries in its context window without having to re-check and fire many tool calls.
-- Built in authentication support, without you worrying about unauthenticated screenshots or expired sessions, it has built-in support for my other repo [authstate](https://github.com/fayez-nazzal/authstate)
+- Built in authentication support, without you worrying about unauthenticated screenshots or expired sessions, it has built-in support for my other tool [authstate](https://github.com/fayez-nazzal/authstate).
 
 ## Project-based configutations
 
