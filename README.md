@@ -16,7 +16,7 @@ Browsershot works great with AI Agents, it's efficient enough to support AI Agen
 - Helps write PRs with screenshot evidence of the implemented pages.
 - Supports structured JSON output per command so AI Agents get quick summaries in its context window without having to re-check and fire many tool calls.
 - Authentication support, without you worrying about unauthenticated screenshots or expired sessions, it has built-in support for my other tool [authstate](https://github.com/fayez-nazzal/authstate).
-- For authentications, multiple testing user roles are supported using `.testing-credentials.yaml`.
+- For authentications, multiple testing users are supported using `.testing-credentials.yaml`, e.p: You can have a free, premium, non-onboarded user accounts, each with different testing data covering your testing views or use cases.
 
 ## Project-based configutations
 
