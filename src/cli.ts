@@ -5,19 +5,23 @@ import packageJson from "../package.json";
 import { mkdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { createHash } from "node:crypto";
-import { capture, isAuthenticationCaptureFailure, NAVIGATION_TIMEOUT_MS, VIEWPORT_WIDTH, VIEWPORT_HEIGHT, type CaptureOptions, type CaptureResult } from "./capture.ts";
-import { drawAnnotations, parseBoxFlag, parseMarkerFlag, type BoxAnnotation, type MarkerAnnotation } from "./annotate.ts";
+import { capture, isAuthenticationCaptureFailure, type CaptureOptions, type CaptureResult } from "./capture.ts";
+import { drawAnnotations } from "./annotate.ts";
 import { publish, labelFromPath, DEFAULT_EMBED_WIDTH } from "./publish.ts";
-import { parseActions, type Action } from "./act.ts";
-import type { InspectOptions } from "./inspect.ts";
 import { EXIT_FAILED, EXIT_OK, EXIT_USAGE, EXIT_WRITE_ERROR, publishFailure, type ExitCode } from "./exit-codes.ts";
 import { resolveAuthJar, AuthStateFailure, discoverAuthCredentials } from "./authstate.ts";
-import { profilePaths, readProfile, resolveQuickUrl, setProfileValue, unsetProfileValue } from "./profile.ts";
+import { profilePaths, readProfile, setProfileValue, unsetProfileValue } from "./profile.ts";
 import { openFile } from "./open.ts";
 import { createRunTmpDir, ensureWorkspace, removeRunTmpDir } from "./workspace.ts";
-import { resolveOutputPath, timestamp } from "./output-path.ts";
+import { resolveRunOptions } from "./run-options.ts";
 
 export { timestamp } from "./output-path.ts";
+export {
+  normalizeUrl,
+  parseSize,
+  resolveCaptureUrl,
+  resolvePublishDestination as resolvePublishDest,
+} from "./run-options.ts";
 
 export const VERSION = `${packageJson.version}-alpha`;
 
@@ -194,62 +198,6 @@ export function parseCliArgs(argv: string[]) {
 
 function parse() { return parseCliArgs(process.argv.slice(2)); }
 
-export interface RunDefaultFlags {
-  auth?: boolean; "auth-user"?: string; "auth-credentials"?: string; "auth-redirect"?: string; "no-auth"?: boolean; "no-auth-redirect"?: boolean;
-  "expect-text"?: string; "expect-element"?: string; "no-expect"?: boolean;
-  json?: boolean; "no-json"?: boolean; "auto-open"?: boolean; "no-auto-open"?: boolean;
-}
-
-export interface RunDefaults {
-  authRequested: boolean; authUser?: string; authCredentials?: string;
-  authRedirect?: string;
-  expectText?: string; expectElement?: string; json: boolean; autoOpen: boolean;
-}
-
-function nonEmptyFlag(name: string, value: string | undefined): string | undefined {
-  if (value !== undefined && value.trim() === "") throw new Error(`--${name} needs a non-empty value`);
-  return value;
-}
-
-export function resolveRunDefaults(flags: RunDefaultFlags, profile: ReturnType<typeof readProfile>): RunDefaults {
-  if (flags["no-auth"] === true && (flags.auth === true || flags["auth-user"] !== undefined || flags["auth-credentials"] !== undefined)) {
-    throw new Error("conflict between --no-auth and positive auth options");
-  }
-  if (flags["no-auth-redirect"] === true && flags["auth-redirect"] !== undefined) {
-    throw new Error("conflict between --no-auth-redirect and --auth-redirect");
-  }
-  if (flags["no-expect"] === true && (flags["expect-text"] !== undefined || flags["expect-element"] !== undefined)) {
-    throw new Error("conflict between --no-expect and positive expectation options");
-  }
-  if (flags["no-json"] === true && flags.json === true) throw new Error("conflict between --no-json and --json");
-  if (flags["no-auto-open"] === true && flags["auto-open"] === true) throw new Error("conflict between --no-auto-open and --auto-open");
-  const authUser = nonEmptyFlag("auth-user", flags["auth-user"] ?? profile.authUser);
-  const authRedirect = flags["no-auth-redirect"] === true ? undefined : nonEmptyFlag("auth-redirect", flags["auth-redirect"] ?? profile.authRedirect);
-  const authRequested = flags["no-auth"] === true ? false : Boolean(flags.auth || authUser !== undefined || flags["auth-credentials"] !== undefined);
-  const explicitExpectation = flags["expect-text"] !== undefined || flags["expect-element"] !== undefined;
-  const expectations = flags["no-expect"] === true ? {} : explicitExpectation
-    ? { expectText: nonEmptyFlag("expect-text", flags["expect-text"]), expectElement: nonEmptyFlag("expect-element", flags["expect-element"]) }
-    : { expectText: profile.expectText, expectElement: profile.expectElement };
-  return {
-    authRequested,
-    authUser,
-    authCredentials: flags["auth-credentials"],
-    authRedirect,
-    expectText: expectations.expectText,
-    expectElement: expectations.expectElement,
-    json: flags["no-json"] === true ? false : Boolean(flags.json || profile.json),
-    autoOpen: flags["no-auto-open"] === true ? false : Boolean(flags["auto-open"] || profile.autoOpen),
-  };
-}
-
-export function resolveCaptureUrl(positional: string, profile: ReturnType<typeof readProfile>): string {
-  if (positional.startsWith("/")) {
-    if (profile.baseUrl == null) throw new Error("quick capture needs a saved baseUrl; run: browsershot config set baseUrl <url>");
-    return resolveQuickUrl(profile.baseUrl, positional);
-  }
-  return normalizeUrl(positional);
-}
-
 export function sha256Hex(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
@@ -313,17 +261,6 @@ export function emptySuccess(): SuccessSummary {
   };
 }
 
-export function normalizeUrl(url: string): string {
-  let result = `https://${url}`;
-  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(url)) {
-    result = url;
-  }
-  if (/^(about|data|blob|view-source|chrome|javascript):/i.test(url)) {
-    result = url;
-  }
-  return result;
-}
-
 export function normalizeArgv(argv: string[]): string[] {
   const result: string[] = [];
   let index = 0;
@@ -342,30 +279,6 @@ export function normalizeArgv(argv: string[]): string[] {
       result.push(token);
       index = index + 1;
     }
-  }
-  return result;
-}
-
-export function resolvePublishDest(explicit: string | null, saved: string | undefined): string | null {
-  let result: string | null = null;
-  if (explicit != null) {
-    if (explicit === "") {
-      if (saved == null || saved.trim() === "") {
-        throw new Error("bare --publish needs a saved destination; run: browsershot config set publish <dest>");
-      }
-      result = saved;
-    } else {
-      result = explicit;
-    }
-  }
-  return result;
-}
-
-export function parseSize(s: string): { width: number; height: number } | null {
-  const m = /^(\d+)x(\d+)$/i.exec(s.trim());
-  let result: { width: number; height: number } | null = null;
-  if (m) {
-    result = { width: Number(m[1]), height: Number(m[2]) };
   }
   return result;
 }
@@ -392,14 +305,6 @@ export function inspectSummary(record: { role: string; name: string; attributes:
     summary = `${summary} ${attr}=${value}`;
   }
   return summary;
-}
-
-function intFlag(name: string, raw: string): number {
-  const n = Number(raw);
-  if (!Number.isInteger(n) || n <= 0) {
-    throw new Error(`--${name} must be a positive integer`);
-  }
-  return n;
 }
 
 function fail(msg: string, code: ExitCode = EXIT_USAGE): never {
@@ -474,97 +379,30 @@ async function main() {
     if (positionals.length > 1) {
       fail(`unexpected extra arguments: ${positionals.slice(1).join(" ")}`);
     }
-    let url = "";
-    {
-      const positional = positionals[0]!;
-      try { url = resolveCaptureUrl(positional, profile); } catch (e) { fail((e as Error).message); }
-    }
-    let defaults: RunDefaults;
+    const cwd = process.cwd();
+    let runOptions: ReturnType<typeof resolveRunOptions>;
     try {
-      defaults = resolveRunDefaults(values, profile);
-    } catch (e) { fail((e as Error).message); }
-    const json = defaults.json;
-
-    const explicitOutput = values.output !== undefined;
-    const explicitStructuredOutput = values.group !== undefined || values.label !== undefined;
-    if (explicitOutput && explicitStructuredOutput) {
-      fail("--output cannot be combined with --group or --label");
-    }
-    let out: string;
-    try {
-      out = resolveOutputPath({
-        capturesDirectory: profilePaths().captures,
-        url,
-        output: explicitOutput ? values.output : explicitStructuredOutput ? undefined : profile.output,
-        group: explicitOutput ? undefined : values.group ?? profile.group,
-        label: explicitOutput ? undefined : values.label ?? profile.label,
+      runOptions = resolveRunOptions({
+        positional: positionals[0]!,
+        flags: values,
+        profile,
+        paths: profilePaths(cwd),
+        cwd,
       });
-    } catch (e) {
-      fail((e as Error).message);
-    }
-
-    let publishDest: string | null = null;
-    try {
-      publishDest = resolvePublishDest(values.publish ?? null, profile.publish);
-    } catch (e) {
-      fail((e as Error).message);
-    }
-
-    let publishSize = DEFAULT_EMBED_WIDTH;
-    try {
-      if (values["publish-size"] != null) {
-        publishSize = intFlag("publish-size", values["publish-size"]);
-      }
-    } catch (e) {
-      fail((e as Error).message);
-    }
-    const boxes: BoxAnnotation[] = [];
-    const markers: MarkerAnnotation[] = [];
-    try {
-      for (const raw of values.box) {
-        boxes.push(parseBoxFlag(raw));
-      }
-      for (const raw of values.marker) {
-        markers.push(parseMarkerFlag(raw));
-      }
-    } catch (e) {
-      fail((e as Error).message);
-    }
-
-    let viewport = { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT };
-    if (values.size != null) {
-      const size = parseSize(values.size);
-      if (size == null) {
-        fail(`--size must look like WxH (e.g. 1920x1080), got "${values.size}"`);
-      }
-      viewport = size;
-    }
-
-    let delayMs = 0;
-    try {
-      if (values.delay != null) {
-        delayMs = intFlag("delay", values.delay);
-      }
-    } catch (e) {
-      fail((e as Error).message);
-    }
-
-    let fullPage = Boolean(values["full-page"]);
-    const verbose = Boolean(values.verbose);
-    if (values["auth-purpose"]) {
-      fail("--auth-purpose was removed — use --auth-user");
-    }
+    } catch (e) { fail((e as Error).message); }
+    const json = runOptions.report.json;
+    const out = runOptions.outputPath;
     let jarPath: string | undefined;
     let authCredentialsPath: string | null = null;
-    if (defaults.authRequested) {
+    if (runOptions.auth.requested) {
       try {
-        let credentialsPath = defaults.authCredentials;
+        let credentialsPath = runOptions.auth.credentialsPath;
         if (credentialsPath == null) {
-          credentialsPath = discoverAuthCredentials(process.cwd());
+          credentialsPath = discoverAuthCredentials(runOptions.cwd);
           process.stderr.write(`browsershot: using ${credentialsPath}\n`);
         }
         authCredentialsPath = credentialsPath;
-        const user = defaults.authUser;
+        const user = runOptions.auth.user;
         jarPath = await resolveAuthJar(
           { credentialsPath: credentialsPath as string, user: user as string | undefined },
           undefined,
@@ -577,44 +415,9 @@ async function main() {
         fail((e as Error).message, EXIT_FAILED);
       }
     }
-    const allowBlank = Boolean(values["allow-blank"]);
-    const allowStatus = Boolean(values["allow-status"]);
-    const expectText = defaults.expectText;
-    const expectElement = defaults.expectElement;
-
-    let inspect: InspectOptions | undefined;
-    if (values.inspect != null) {
-      if (values.inspect.trim() === "") {
-        fail("--inspect needs a CSS selector");
-      }
-      inspect = { selector: values.inspect, attr: values["inspect-attr"], timeoutMs: NAVIGATION_TIMEOUT_MS };
-    }
-    const inspectFooter = values["inspect-note"];
-
-    let actions: Action[] | undefined;
-    try {
-      if (values.act != null) {
-        actions = parseActions(values.act);
-      }
-    } catch (e) {
-      fail((e as Error).message);
-    }
-
-    const options = {
-      url,
-      viewport,
-      fullPage,
-      delayMs,
+    const options: CaptureOptions = {
+      ...runOptions.capture,
       cookiesPath: jarPath,
-      allowBlank,
-      authRedirect: defaults.authRedirect,
-      inspect,
-      inspectFooter,
-      actions,
-      allowStatus,
-      expectText,
-      expectElement,
-      verbose,
       log: (message: string) => process.stderr.write(`browsershot: ${message}\n`),
     };
 
@@ -625,8 +428,8 @@ async function main() {
     try {
       const result = await captureWithAuthRetry(
         options,
-        defaults.authRequested && authCredentialsPath != null
-          ? { credentialsPath: authCredentialsPath, user: defaults.authUser }
+        runOptions.auth.requested && authCredentialsPath != null
+          ? { credentialsPath: authCredentialsPath, user: runOptions.auth.user }
           : null,
         undefined,
         (chunk) => process.stderr.write(chunk),
@@ -640,7 +443,7 @@ async function main() {
       fail((e as Error).message, EXIT_FAILED);
     }
     try {
-      png = drawAnnotations(png, boxes, markers, runTmp);
+      png = drawAnnotations(png, runOptions.annotations.boxes, runOptions.annotations.markers, runTmp);
     } catch (e) {
       fail((e as Error).message);
     }
@@ -656,8 +459,8 @@ async function main() {
     }
     if (inspected != null) {
       let jsonOut = inspectJsonPath(out);
-      if (values["inspect-json"] != null) {
-        jsonOut = values["inspect-json"];
+      if (runOptions.inspectJsonPath != null) {
+        jsonOut = runOptions.inspectJsonPath;
       }
       try {
         mkdirSync(dirname(jsonOut), { recursive: true });
@@ -667,16 +470,18 @@ async function main() {
       }
       success.inspectJsonPath = jsonOut;
       success.inspected = inspected;
-      process.stderr.write(`browsershot: inspected ${inspectSummary(inspected, values["inspect-attr"])}\n`);
+      process.stderr.write(`browsershot: inspected ${inspectSummary(inspected, runOptions.capture.inspect?.attr)}\n`);
       process.stderr.write(`browsershot: element json ${jsonOut}\n`);
     }
-    if (publishDest != null) {
-      let pngLabel = labelFromPath(out);
-      if (values["publish-label"] != null) {
-        pngLabel = values["publish-label"];
-      }
+    if (runOptions.publish != null) {
+      const pngLabel = runOptions.publish.label ?? labelFromPath(out);
       try {
-        const published = publish({ filePath: out, dest: publishDest, size: publishSize, label: pngLabel });
+        const published = publish({
+          filePath: out,
+          dest: runOptions.publish.destination,
+          size: runOptions.publish.size,
+          label: pngLabel,
+        });
         success.publishedUrl = published.url;
         if (!json) {
           process.stdout.write(`${published.markdown}\n`);
@@ -689,7 +494,7 @@ async function main() {
     if (json) {
       process.stdout.write(`${JSON.stringify(success)}\n`);
     }
-    if (defaults.autoOpen) {
+    if (runOptions.report.autoOpen) {
       openFile(out, (message) => process.stderr.write(`browsershot: warning: ${message}\n`));
     }
   }

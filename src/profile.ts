@@ -10,7 +10,7 @@ import { UsageError } from "./exit-codes.ts";
 
 export type { ProfileConfig } from "./profile-settings.ts";
 
-interface ProfilePaths {
+export interface ProfilePaths {
   directory: string;
   config: string;
   captures: string;
