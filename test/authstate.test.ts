@@ -56,6 +56,13 @@ test("omits --user when no user is given", async () => {
   expect(calls[0]).toEqual(["authstate", "ensure", "--credentials", "creds.yaml"]);
 });
 
+test("adds --verify only when explicitly requested", async () => {
+  const calls: string[][] = [];
+  const envelope = JSON.stringify({ path: "/jars/verified.json" });
+  await resolveAuthJar({ credentialsPath: "creds.yaml", user: "basic-user", verify: true }, deps(true, okRun(envelope), calls));
+  expect(calls[0]).toEqual(["authstate", "ensure", "--credentials", "creds.yaml", "--user", "basic-user", "--verify"]);
+});
+
 test("omits --credentials entirely when discovery is used", async () => {
   const calls: string[][] = [];
   const envelope = JSON.stringify({ path: "/jars/a.json" });

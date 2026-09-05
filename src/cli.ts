@@ -5,7 +5,7 @@ import packageJson from "../package.json";
 import { mkdirSync, statSync, writeFileSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { createHash } from "node:crypto";
-import { capture, NAVIGATION_TIMEOUT_MS, VIEWPORT_WIDTH, VIEWPORT_HEIGHT } from "./capture.ts";
+import { capture, isAuthenticationCaptureFailure, NAVIGATION_TIMEOUT_MS, VIEWPORT_WIDTH, VIEWPORT_HEIGHT, type CaptureOptions, type CaptureResult } from "./capture.ts";
 import { drawAnnotations, parseBoxFlag, parseMarkerFlag, type BoxAnnotation, type MarkerAnnotation } from "./annotate.ts";
 import { publish, labelFromPath, DEFAULT_EMBED_WIDTH } from "./publish.ts";
 import { parseActions, type Action } from "./act.ts";
@@ -247,6 +247,45 @@ export interface SuccessSummary {
   publishedUrl: string | null;
 }
 
+export interface AuthCaptureRetryDeps {
+  capture: (options: CaptureOptions) => Promise<CaptureResult>;
+  resolveAuthJar: typeof resolveAuthJar;
+}
+
+export async function captureWithAuthRetry(
+  options: CaptureOptions,
+  auth: { credentialsPath: string; user?: string } | null,
+  deps: AuthCaptureRetryDeps = { capture, resolveAuthJar },
+  onAuthStateStderr?: (chunk: string) => void,
+): Promise<CaptureResult> {
+  try {
+    return await deps.capture(options);
+  } catch (initialError) {
+    if (auth == null || !isAuthenticationCaptureFailure(initialError)) {
+      throw initialError;
+    }
+    const initialMessage = (initialError as Error).message;
+    process.stderr.write("browsershot: authentication appears invalid; verifying session and retrying once\n");
+    let verifiedJar: string;
+    try {
+      verifiedJar = await deps.resolveAuthJar({ ...auth, verify: true }, undefined, onAuthStateStderr);
+    } catch (verificationError) {
+      if (verificationError instanceof AuthStateFailure) {
+        throw new AuthStateFailure(
+          `authentication retry failed after ${initialMessage}: ${verificationError.message}`,
+          verificationError.code,
+        );
+      }
+      throw new Error(`authentication retry failed after ${initialMessage}: ${(verificationError as Error).message}`);
+    }
+    try {
+      return await deps.capture({ ...options, cookiesPath: verifiedJar });
+    } catch (retryError) {
+      throw new Error(`authentication retry failed after ${initialMessage}: ${(retryError as Error).message}`);
+    }
+  }
+}
+
 export function emptySuccess(): SuccessSummary {
   return {
     outputPath: null,
@@ -485,6 +524,7 @@ async function main() {
       fail("--auth-purpose was removed — use --auth-user");
     }
     let jarPath: string | undefined;
+    let authCredentialsPath: string | null = null;
     if (defaults.authRequested) {
       try {
         let credentialsPath = defaults.authCredentials;
@@ -492,6 +532,7 @@ async function main() {
           credentialsPath = discoverAuthCredentials(process.cwd());
           process.stderr.write(`browsershot: using ${credentialsPath}\n`);
         }
+        authCredentialsPath = credentialsPath;
         const user = defaults.authUser;
         jarPath = await resolveAuthJar(
           { credentialsPath: credentialsPath as string, user: user as string | undefined },
@@ -559,7 +600,14 @@ async function main() {
     let png: Uint8Array = new Uint8Array();
     let inspected = null;
     try {
-      const result = await capture(options);
+      const result = await captureWithAuthRetry(
+        options,
+        defaults.authRequested && authCredentialsPath != null
+          ? { credentialsPath: authCredentialsPath, user: defaults.authUser }
+          : null,
+        undefined,
+        (chunk) => process.stderr.write(chunk),
+      );
       png = result.png;
       inspected = result.inspected;
     } catch (e) {

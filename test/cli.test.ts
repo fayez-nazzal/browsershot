@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
-import { timestamp, normalizeUrl, parseSize, resolvePublishDest, sha256Hex, normalizeArgv, resolveCaptureUrl, resolveRunDefaults } from "../src/cli.ts";
+import { captureWithAuthRetry, timestamp, normalizeUrl, parseSize, resolvePublishDest, sha256Hex, normalizeArgv, resolveCaptureUrl, resolveRunDefaults } from "../src/cli.ts";
+import { AuthStateFailure } from "../src/authstate.ts";
+import { AuthenticationCaptureFailure } from "../src/capture.ts";
 
 test("timestamp matches YYYYMMDD-HHMMSS", () => {
   expect(timestamp()).toMatch(/^\d{8}-\d{6}$/);
@@ -103,4 +105,69 @@ test("resolveRunDefaults rejects contradictory or empty options", () => {
   expect(() => resolveRunDefaults({ "auto-open": true, "no-auto-open": true }, {})).toThrow(/conflict/);
   expect(() => resolveRunDefaults({ "expect-text": "  " }, {})).toThrow(/non-empty/);
   expect(() => resolveRunDefaults({ "expect-element": "  " }, {})).toThrow(/non-empty/);
+});
+
+function captureResult() {
+  return { png: new Uint8Array([1, 2, 3]), inspected: null };
+}
+
+test("auth capture retries once with a verified jar after an auth failure", async () => {
+  const calls: string[] = [];
+  const jars: string[] = [];
+  const result = await captureWithAuthRetry(
+    { url: "https://example.test", fullPage: false, delayMs: 0, allowBlank: true, cookiesPath: "/jars/old.json" },
+    { credentialsPath: "creds.yaml", user: "member" },
+    {
+      capture: async (options) => {
+        calls.push("capture");
+        jars.push(options.cookiesPath ?? "none");
+        if (calls.length === 1) throw new AuthenticationCaptureFailure("HTTP 401");
+        return captureResult();
+      },
+      resolveAuthJar: async (request) => {
+        calls.push(request.verify === true ? "verify" : "ensure");
+        return "/jars/refreshed.json";
+      },
+    },
+  );
+  expect(result.png).toEqual(new Uint8Array([1, 2, 3]));
+  expect(calls).toEqual(["capture", "verify", "capture"]);
+  expect(jars).toEqual(["/jars/old.json", "/jars/refreshed.json"]);
+});
+
+test("generic capture failures do not verify or retry", async () => {
+  const calls: string[] = [];
+  await expect(captureWithAuthRetry(
+    { url: "https://example.test", fullPage: false, delayMs: 0, allowBlank: true },
+    { credentialsPath: "creds.yaml" },
+    {
+      capture: async () => { calls.push("capture"); throw new Error("render failed"); },
+      resolveAuthJar: async () => { calls.push("verify"); return "/jars/refreshed.json"; },
+    },
+  )).rejects.toThrow("render failed");
+  expect(calls).toEqual(["capture"]);
+});
+
+test("authentication retry stops after one retry", async () => {
+  const calls: string[] = [];
+  await expect(captureWithAuthRetry(
+    { url: "https://example.test", fullPage: false, delayMs: 0, allowBlank: true },
+    { credentialsPath: "creds.yaml" },
+    {
+      capture: async () => { calls.push("capture"); throw new AuthenticationCaptureFailure("HTTP 403"); },
+      resolveAuthJar: async () => { calls.push("verify"); return "/jars/refreshed.json"; },
+    },
+  )).rejects.toThrow(/authentication retry failed/);
+  expect(calls).toEqual(["capture", "verify", "capture"]);
+});
+
+test("failed verification preserves authstate failure code and original context", async () => {
+  await expect(captureWithAuthRetry(
+    { url: "https://example.test", fullPage: false, delayMs: 0, allowBlank: true },
+    { credentialsPath: "creds.yaml" },
+    {
+      capture: async () => { throw new AuthenticationCaptureFailure("HTTP 401"); },
+      resolveAuthJar: async () => { throw new AuthStateFailure("login failed", 1); },
+    },
+  )).rejects.toMatchObject({ message: expect.stringMatching(/HTTP 401.*login failed/), code: 1 });
 });

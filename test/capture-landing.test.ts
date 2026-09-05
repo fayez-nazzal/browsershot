@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { preparePage, type CaptureOptions } from "../src/capture.ts";
+import { AuthenticationCaptureFailure, preparePage, type CaptureOptions } from "../src/capture.ts";
 
 const BASE_OPTIONS: CaptureOptions = {
   url: "https://example.com/missing",
@@ -26,9 +26,30 @@ function fakePage(status: number, events: string[] = []) {
   return page;
 }
 
+function fakeRedirectPage(finalUrl: string) {
+  const page = fakePage(200);
+  page.goto = async () => ({ status: () => 200, url: () => finalUrl });
+  return page;
+}
+
 test("preparePage rejects a 404 response instead of preparing to screenshot it", async () => {
   const page = fakePage(404);
   await expect(preparePage(page as never, BASE_OPTIONS)).rejects.toThrow(/404/);
+});
+
+test("preparePage classifies HTTP 401 as an authentication failure", async () => {
+  const page = fakePage(401);
+  await expect(preparePage(page as never, BASE_OPTIONS)).rejects.toBeInstanceOf(AuthenticationCaptureFailure);
+});
+
+test("preparePage classifies a clear login redirect as an authentication failure", async () => {
+  const page = fakeRedirectPage("https://example.com/sign-in?return=/dashboard");
+  await expect(preparePage(page as never, BASE_OPTIONS)).rejects.toBeInstanceOf(AuthenticationCaptureFailure);
+});
+
+test("preparePage leaves generic application URLs unclassified", async () => {
+  const page = fakeRedirectPage("https://example.com/dashboard");
+  await expect(preparePage(page as never, BASE_OPTIONS)).resolves.toBeUndefined();
 });
 
 test("preparePage accepts a 404 when --allow-status is set", async () => {

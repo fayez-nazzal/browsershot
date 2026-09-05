@@ -15,6 +15,7 @@ export interface AuthStateDeps {
 export interface AuthJarRequest {
   credentialsPath: string | null;
   user?: string;
+  verify?: boolean;
 }
 
 export class AuthStateFailure extends Error {
@@ -86,6 +87,9 @@ function buildArgs(request: AuthJarRequest): string[] {
   if (request.user != null) {
     args.push("--user");
     args.push(request.user);
+  }
+  if (request.verify === true) {
+    args.push("--verify");
   }
   return args;
 }
