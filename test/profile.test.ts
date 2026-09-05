@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -9,6 +9,7 @@ import {
   writeProfile,
   type ProfileConfig,
 } from "../src/profile.ts";
+import { UsageError } from "../src/exit-codes.ts";
 
 function scratch(): string {
   return mkdtempSync(join(tmpdir(), "browsershot-profile-test-"));
@@ -92,4 +93,25 @@ test("canonical baseUrl wins over legacy url", () => {
   mkdirSync(profilePaths(root).directory, { recursive: true });
   writeFileSync(profilePaths(root).config, JSON.stringify({ url: "https://legacy.example", baseUrl: "https://canonical.example" }));
   expect(readProfile(root).baseUrl).toBe("https://canonical.example");
+});
+
+test("malformed and unreadable profile files are usage errors", () => {
+  const malformedRoot = scratch();
+  mkdirSync(profilePaths(malformedRoot).directory, { recursive: true });
+  writeFileSync(profilePaths(malformedRoot).config, "{not-json");
+  expect(() => readProfile(malformedRoot)).toThrow(UsageError);
+  expect(() => readProfile(malformedRoot)).toThrow("malformed profile config");
+
+  const unreadableRoot = scratch();
+  mkdirSync(profilePaths(unreadableRoot).config, { recursive: true });
+  expect(() => readProfile(unreadableRoot)).toThrow(UsageError);
+});
+
+test("a failed profile update preserves the previously written config", () => {
+  const root = scratch();
+  writeProfile(root, { baseUrl: "https://example.com", label: "before" });
+  const before = readFileSync(profilePaths(root).config, "utf8");
+  expect(() => writeProfile(root, { output: "shot.png", label: "conflict" })).toThrow(UsageError);
+  expect(readFileSync(profilePaths(root).config, "utf8")).toBe(before);
+  expect(readdirSync(profilePaths(root).directory).some((name) => name.endsWith(".tmp"))).toBe(false);
 });

@@ -13,6 +13,20 @@ export type ExitCode =
   | typeof EXIT_WRITE_ERROR
   | typeof EXIT_PUBLISH_ERROR;
 
+export class ExitError extends Error {
+  constructor(message: string, readonly code: ExitCode) {
+    super(message);
+    this.name = "ExitError";
+  }
+}
+
+export class UsageError extends ExitError {
+  constructor(message: string) {
+    super(message, EXIT_USAGE);
+    this.name = "UsageError";
+  }
+}
+
 export interface FailureExit {
   message: string;
   code: ExitCode;
