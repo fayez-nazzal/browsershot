@@ -23,6 +23,8 @@ browsershot config set baseUrl https://example.com
 
 Browsershot keeps all run data in `.browsershot/`, all configs are stored in `.browsershot/config.json`, it stores the base URL and other project settings.
 
+A quick path changes only URL resolution; every option behaves the same for a complete URL. Malformed project config is a usage error for either form, before capture starts. Reads never create the `.browsershot/` workspace.
+
 ## 2. Useful flags
 
 Use flags when a capture needs more than a simple route:
@@ -50,8 +52,12 @@ browsershot /dashboard --act 'click:#menu' --inspect '#menu' --json
 See `README.md` for the complete flag list.
 
 The default path is
-`.browsershot/captures/{host}/{route}_{timestamp}.png`. Output, group, and label
-templates support `{host}`, `{route}`, `{date}`, `{time}`, and `{timestamp}`.
+`.browsershot/captures/{host}/{route}_{timestamp}.png`, plus a `_q-{query}`
+segment when the URL has a query. Output, group, and label templates support
+`{host}`, `{route}`, `{query}`, `{date}`, `{time}`, and `{timestamp}`. `{query}`
+holds sanitized parameter names plus a fingerprint; query values are never
+written in plaintext. `{route}` uses the pathname of a hash route (a fragment
+beginning with `/`); ordinary anchors are ignored.
 Prefer `--group` and `--label` because they add safe separators automatically;
 use `--output` only when the complete destination matters.
 

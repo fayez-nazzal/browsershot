@@ -15,6 +15,7 @@ test("help explains both capture entry paths and exposes every capture flag", ()
     "--group",
     "--label",
     "{timestamp}",
+    "{query}",
     "--no-expect",
     "--no-auth",
     "--auth-redirect",
@@ -32,6 +33,10 @@ test("help explains both capture entry paths and exposes every capture flag", ()
     "--allow-status",
     "--allow-blank",
     "outputPath, bytes, sha256, inspectJsonPath",
+    "hash route",
+    "query values are never written in plaintext",
+    "Invalid saved configuration blocks both forms",
+    "quick path changes only URL resolution",
   ]) {
     expect(help).toContain(phrase);
   }

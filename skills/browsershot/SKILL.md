@@ -31,14 +31,19 @@ centered on the hovered element's bottom edge. Hovered links also show a
 black-and-white URL preview centered directly below the cursor; the preview
 is ellipsized for long URLs and stays within the capture bounds.
 
-Complete URLs do not require `.browsershot/config.json`. Quick paths require a known saved `baseUrl`; do not guess it. The legacy saved key `url` is accepted. Saved auth, assertions, output, JSON, and viewer settings can be overridden for one run with `--no-auth`, `--no-expect`, `--output`, `--no-json`, or `--no-auto-open`.
+Complete URLs do not require `.browsershot/config.json`. Quick paths require a known saved `baseUrl`; do not guess it. The legacy saved key `url` is accepted. A quick path changes only URL resolution; every option behaves the same for a complete URL, and malformed saved config is a usage error for either form, before capture starts. Saved auth, assertions, output, JSON, and viewer settings can be overridden for one run with `--no-auth`, `--no-expect`, `--output`, `--no-json`, or `--no-auto-open`.
 
 Captures default to
-`.browsershot/captures/{host}/{route}_{timestamp}.png`. Use `--group PR-123`
-to collect related evidence and `--label menu-open` to name the captured state;
-Browsershot adds safe separators. These values and advanced `--output`
-templates accept `{host}`, `{route}`, `{date}`, `{time}`, and `{timestamp}`.
-Do not combine an explicit `--output` with `--group` or `--label`.
+`.browsershot/captures/{host}/{route}_{timestamp}.png`, plus a `_q-{query}`
+segment when the URL has a query. Use `--group PR-123` to collect related
+evidence and `--label menu-open` to name the captured state; Browsershot adds
+safe separators, and a `--label` is the readable alternative to a query
+fingerprint. These values and advanced `--output` templates accept `{host}`,
+`{route}`, `{query}`, `{date}`, `{time}`, and `{timestamp}`. `{query}` holds
+sanitized parameter names plus a fingerprint; query values are never written
+in plaintext. `{route}` uses the pathname of a hash route (a fragment
+beginning with `/`); ordinary anchors are ignored. Do not combine an explicit
+`--output` with `--group` or `--label`.
 
 Read the single JSON object from stdout. Assert on `outputPath`, `sha256`, and `inspected` or `inspectJsonPath`; never read PNG bytes. `--expect-text` and `--expect-element` are pre-action readiness checks. `--inspect-attr` reports an attribute and does not compare it to an expected value. Report the absolute output path, the text or element verified, and any failure exit code.
 

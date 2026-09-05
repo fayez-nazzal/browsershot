@@ -18,7 +18,7 @@ Browsershot works great with AI Agents, it's efficient enough to support AI Agen
 - Authentication support, without you worrying about unauthenticated screenshots or expired sessions, it has built-in support for my other tool [authstate](https://github.com/fayez-nazzal/authstate).
 - For authentications, multiple testing users are supported using `.testing-credentials.yaml`, e.p: You can have a free, premium, non-onboarded user accounts, each with different testing data covering your testing views or use cases.
 
-## Project-based configutations
+## Project-based configurations
 
 When a project has a stable base URL, save it once and use short routes:
 
@@ -27,8 +27,11 @@ browsershot config set baseUrl https://example.com # Saved to .browsershot/confi
 browsershot /pricing # Works across multiple commands
 ```
 
-This is the same capture pipeline. The path is simply resolved against the saved base in the current directory. A complete URL always wins over the saved
-base and is never prefixed by it.
+This is the same capture pipeline. The path is simply resolved against the
+saved base in the current directory. A complete URL always wins over the saved
+base and is never prefixed by it. A quick path changes only URL resolution;
+every capture option behaves the same for a quick path and a complete URL.
+Invalid saved configuration blocks both forms before capture starts.
 
 ## Make one capture prove something
 
@@ -74,7 +77,8 @@ Never read PNG bytes into agent context. Use `outputPath`, `bytes`, `sha256`,
 ## Saved settings and one-run choices
 
 Project settings live in `.browsershot/config.json` in the current directory.
-Save only what should be the default for that project:
+Reading them never creates the `.browsershot/` workspace. Save only what
+should be the default for that project:
 
 ```sh
 browsershot config set baseUrl https://example.com
@@ -112,7 +116,12 @@ Browsershot organizes captures by site and route without any configuration:
 
 ```text
 .browsershot/captures/example.com/pricing_2026-09-05_14-30-12.png
+.browsershot/captures/example.com/clients_q-filter-token-4e2a9c7d1130_2026-09-05_14-30-12.png
 ```
+
+The second name is an illustrative shape, not the digest of a specific
+documented URL. The default name adds the `_q-{query}` segment only when the
+URL has a query.
 
 Use `--group` to collect related captures and `--label` to describe the state
 shown in one capture:
@@ -140,16 +149,27 @@ browsershot config set label desktop
 
 The values may use these placeholders:
 
-- `{host}` — the URL host, including a port when present
-- `{route}` — the URL path as a safe slug, or `home` for `/`
-- `{date}` — local date such as `2026-09-05`
-- `{time}` — local time such as `14-30-12`
-- `{timestamp}` — local date and time such as `2026-09-05_14-30-12`
+- `{host}`: the URL host, including a port when present
+- `{route}`: the URL path as a safe slug, or `home` for `/`
+- `{query}`: sanitized parameter names plus a 12-character hexadecimal
+  fingerprint that identifies the query; query values are never written in
+  plaintext
+- `{date}`: local date such as `2026-09-05`
+- `{time}`: local time such as `14-30-12`
+- `{timestamp}`: local date and time such as `2026-09-05_14-30-12`
 
-Queries and fragments are intentionally excluded from generated names so URLs
-do not leak secrets or create unstable paths. Unknown placeholders fail before
-capture, which makes spelling mistakes visible. Write `{{` or `}}` when a
-literal brace is needed.
+Hash-routed applications get logical route names. When the URL fragment begins
+with `/`, `{route}` uses the pathname inside that hash route, so
+`https://example.com/app#/workspaces/8/clients` is named after
+`workspaces-8-clients`. Ordinary anchors such as `#pricing` are ignored, and
+`{route}` keeps the outer path.
+
+Query values never appear in plaintext in generated names. The fingerprint
+identifies a capture, it does not encrypt it, so a caller who wants a readable
+state should use `--label`. Custom `--output`, `--group`, and `--label`
+templates can use `{query}`; it has no implicit separator, so you control its
+placement. Unknown placeholders fail before capture, which makes spelling
+mistakes visible. Write `{{` or `}}` when a literal brace is needed.
 
 Keep `--output` for the less common case where the complete destination matters:
 
@@ -184,8 +204,8 @@ The built-in guards catch two common false captures:
 
 Use `--delay <ms>` when the application needs a known extra settling period.
 Use `--verbose` when diagnosing navigation, browser, console, request, or action
-problems. Guard and capture failures exit `1`; invalid options and conflicts
-exit `2`.
+problems. Guard and capture failures exit `1`; invalid options, conflicts,
+and malformed project configuration exit `2`.
 
 ## Actions and visual marks
 
@@ -286,10 +306,11 @@ removes them. `config show` prints normalized settings, and `config path` prints
 the current config path.
 
 The default PNG path is
-`.browsershot/captures/{host}/{route}_{timestamp}.png`. `--group` and `--label`
-cover everyday organization; `--output` accepts any writable path or template
-when the exact destination matters. `-h, --help` prints the compact command
-reference; `-v, --version` prints the version.
+`.browsershot/captures/{host}/{route}_{timestamp}.png`, plus a `_q-{query}`
+segment when the URL has a query. `--group` and `--label` cover everyday
+organization; `--output` accepts any writable path or template when the exact
+destination matters. `-h, --help` prints the compact command reference;
+`-v, --version` prints the version.
 
 ## For agents
 

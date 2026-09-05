@@ -21,7 +21,10 @@ START HERE
     browsershot /pricing
 
   A complete URL uses itself. A path beginning with / is appended to the saved
-  baseUrl in the current directory. The legacy saved key url is accepted.
+  baseUrl in the current directory. The legacy saved key url is accepted. A
+  quick path changes only URL resolution; every capture option behaves the
+  same for a quick path and a complete URL.
+  Invalid saved configuration blocks both forms before capture starts.
 
 USAGE
   browsershot <url-or-path> [options]
@@ -34,9 +37,17 @@ CAPTURE
       --group <path>        Group under captures, before the host directory
       --label <text>        Describe the captured state in the file name
                             Example: --group PR-123 --label menu-open
-  Default: .browsershot/captures/{host}/{route}_{timestamp}.png
-  Output placeholders: {host}, {route}, {date}, {time}, {timestamp}.
+  Default name without a query:
+    .browsershot/captures/example.com/pricing_2026-09-05_14-30-12.png
+  Name shape with a query (illustrative, not a digest of a documented URL):
+    .browsershot/captures/example.com/clients_q-filter-token-4e2a9c7d1130_2026-09-05_14-30-12.png
+  Output placeholders: {host}, {route}, {query}, {date}, {time}, {timestamp}.
   Use {{ and }} for literal braces. Unknown placeholders are errors.
+  {route} uses the pathname of a hash route (a fragment beginning with /);
+  ordinary anchors are ignored. {query} holds sanitized parameter names plus a
+  12-character hexadecimal fingerprint; query values are never written in plaintext.
+  The fingerprint identifies a capture, it does not encrypt it; use --label for
+  a readable state. The default name adds _q-{query} only when a query exists.
       --size <WxH>          Viewport size (default: 1440x900)
       --delay <ms>          Extra wait after load before capture (default: 0)
       --full-page           Capture the whole scrollable page
@@ -119,7 +130,7 @@ OUTPUT AND ERRORS
 
   Exit 0  capture written
   Exit 1  page guard or capture failure
-  Exit 2  invalid command, option or conflicting flags
+  Exit 2  invalid command, option, conflicting flags or invalid saved configuration
   Exit 3  authstate or credentials environment failure
   Exit 4  PNG written but inspection sidecar failed
   Exit 5  PNG written but publishing failed
@@ -128,7 +139,8 @@ CONFIGURATION
   Canonical saved names: baseUrl, authUser, expectElement, expectText, output,
   group, label, json, autoOpen and publish. Kebab-case aliases are accepted for
   config set and unset, including base-url, auth-user, expect-element,
-  expect-text and auto-open. Reads never rewrite the config file.
+  expect-text and auto-open. Reads never rewrite the config file and never
+  create the workspace.
 
 META
       --verbose         Playwright progress detail on stderr: phase timings,
