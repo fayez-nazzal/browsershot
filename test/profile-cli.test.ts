@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, realpathSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -81,4 +81,34 @@ test("invalid configuration is a usage error", () => {
   const root = scratch();
   expect(run(root, "config", "set", "unknown", "value").exitCode).toBe(2);
   expect(run(root, "config", "set", "url", "not a url").exitCode).toBe(2);
+});
+
+test("malformed project config blocks quick routes and complete URLs before workspace mutation", () => {
+  for (const positional of ["/pricing", "https://example.com/pricing"]) {
+    const root = scratch();
+    const directory = join(root, ".browsershot");
+    mkdirSync(directory);
+    writeFileSync(join(directory, "config.json"), "{broken");
+    const result = run(root, positional);
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr.toString()).toContain("malformed profile config");
+    expect(existsSync(join(directory, ".gitignore"))).toBe(false);
+    expect(existsSync(join(directory, "tmp"))).toBe(false);
+    expect(existsSync(join(directory, "captures"))).toBe(false);
+  }
+});
+
+test("unknown saved settings block quick routes and complete URLs before workspace mutation", () => {
+  for (const positional of ["/pricing", "https://example.com/pricing"]) {
+    const root = scratch();
+    const directory = join(root, ".browsershot");
+    mkdirSync(directory);
+    writeFileSync(join(directory, "config.json"), JSON.stringify({ mystery: true }));
+    const result = run(root, positional);
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr.toString()).toContain("unknown profile setting: mystery");
+    expect(existsSync(join(directory, ".gitignore"))).toBe(false);
+    expect(existsSync(join(directory, "tmp"))).toBe(false);
+    expect(existsSync(join(directory, "captures"))).toBe(false);
+  }
 });

@@ -1,146 +1,61 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { expandOutputTemplate, validateOutputGroup, validateOutputLabel, type OutputTemplateValues } from "./output-path.ts";
+import {
+  profileValueFromCommand,
+  resolveProfileSettingName,
+  validateProfileConfig,
+  type ProfileConfig,
+} from "./profile-settings.ts";
+import { UsageError } from "./exit-codes.ts";
 
-const TEMPLATE_EXAMPLE: OutputTemplateValues = {
-  date: "2026-09-05",
-  time: "14-30-12",
-  timestamp: "2026-09-05_14-30-12",
-  host: "example.com",
-  route: "pricing",
-};
-
-export interface ProfileConfig {
-  baseUrl?: string;
-  authUser?: string;
-  authRedirect?: string;
-  expectElement?: string;
-  expectText?: string;
-  output?: string;
-  group?: string;
-  label?: string;
-  json?: boolean;
-  autoOpen?: boolean;
-  publish?: string;
-}
-
-interface ProfilePaths {
+export interface ProfilePaths {
   directory: string;
   config: string;
   captures: string;
 }
-
-const aliases: Record<string, string> = {
-  url: "baseUrl", "base-url": "baseUrl", "auth-user": "authUser",
-  "auth-redirect": "authRedirect",
-  "expect-text": "expectText", "expect-element": "expectElement", "auto-open": "autoOpen",
-};
-const CONFIG_KEYS = new Set(["baseUrl", "base-url", "url", "authUser", "auth-user", "authRedirect", "auth-redirect", "expectElement", "expect-element", "expectText", "expect-text", "output", "group", "label", "json", "autoOpen", "auto-open", "publish"]);
 
 export function profilePaths(root = process.cwd()): ProfilePaths {
   const directory = join(root, ".browsershot");
   return { directory, config: join(directory, "config.json"), captures: join(directory, "captures") };
 }
 
-function validateConfig(config: unknown): ProfileConfig {
-  if (config == null || typeof config !== "object" || Array.isArray(config)) {
-    throw new Error("profile config must be a JSON object");
-  }
-  const raw = config as Record<string, unknown>;
-  const normalizedInput: Record<string, unknown> = { ...raw };
-  if (raw.baseUrl !== undefined) delete normalizedInput.url;
-  else if (raw.url !== undefined) normalizedInput.baseUrl = raw.url;
-  delete normalizedInput.url;
-  const result: ProfileConfig = {};
-  for (const [key, value] of Object.entries(normalizedInput)) {
-    if (!["baseUrl", "authUser", "authRedirect", "expectElement", "expectText", "output", "group", "label", "json", "autoOpen", "publish", "url"].includes(key)) {
-      throw new Error(`unknown profile setting: ${key}`);
-    }
-    if (["json", "autoOpen"].includes(key)) {
-      if (typeof value !== "boolean") {
-        throw new Error(`profile setting ${key} must be boolean`);
-      }
-    } else if (typeof value !== "string" || value.trim() === "") {
-      throw new Error(`profile setting ${key} must be a non-empty string`);
-    }
-    (result as Record<string, unknown>)[key] = value;
-  }
-  if (result.baseUrl !== undefined) {
-    try { new URL(result.baseUrl); } catch { throw new Error("profile setting baseUrl must be an absolute URL"); }
-  }
-  if (result.output !== undefined && (result.group !== undefined || result.label !== undefined)) {
-    throw new Error("saved output cannot be combined with group or label; unset output or the structured naming settings first");
-  }
-  for (const key of ["output", "group", "label"] as const) {
-    if (result[key] !== undefined) expandOutputTemplate(result[key], TEMPLATE_EXAMPLE);
-  }
-  if (result.group !== undefined) validateOutputGroup(result.group, TEMPLATE_EXAMPLE);
-  if (result.label !== undefined) validateOutputLabel(result.label, TEMPLATE_EXAMPLE);
-  return result;
-}
-
 export function readProfile(root = process.cwd()): ProfileConfig {
   const path = profilePaths(root).config;
-  let result: ProfileConfig = {};
-  if (existsSync(path)) {
-    try {
-      result = validateConfig(JSON.parse(readFileSync(path, "utf8")));
-    } catch (error) {
-      if (error instanceof SyntaxError) {
-        throw new Error(`malformed profile config: ${path}`);
-      }
-      throw error;
-    }
+  if (!existsSync(path)) return {};
+  try {
+    return validateProfileConfig(JSON.parse(readFileSync(path, "utf8")));
+  } catch (error) {
+    if (error instanceof UsageError) throw error;
+    if (error instanceof SyntaxError) throw new UsageError(`malformed profile config: ${path}`);
+    throw new UsageError(`could not read profile config ${path}: ${(error as Error).message}`);
   }
-  return result;
 }
 
 export function writeProfile(root: string, config: ProfileConfig): void {
   const paths = profilePaths(root);
+  const validatedConfig = validateProfileConfig(config);
   mkdirSync(paths.directory, { recursive: true });
   const temporary = `${paths.config}.${process.pid}.tmp`;
-  writeFileSync(temporary, `${JSON.stringify(validateConfig(config), null, 2)}\n`);
+  writeFileSync(temporary, `${JSON.stringify(validatedConfig, null, 2)}\n`);
   renameSync(temporary, paths.config);
 }
 
 export function setProfileValue(root: string, name: string, rawValue?: string): ProfileConfig {
-  if (!CONFIG_KEYS.has(name)) {
-    throw new Error(`unknown profile setting: ${name}`);
-  }
   const current = readProfile(root);
-  const config = { ...current };
-  const property = aliases[name] ?? name;
-  if (["json", "autoOpen"].includes(property)) {
-    if (rawValue != null) {
-      throw new Error(`${name} does not take a value`);
-    }
-    (config as Record<string, unknown>)[property] = true;
-  } else {
-    if (rawValue == null || rawValue.trim() === "") {
-      throw new Error(`${name} needs a non-empty value`);
-    }
-    if (property === "baseUrl") {
-      try {
-        new URL(rawValue);
-      } catch {
-        throw new Error("baseUrl must be an absolute URL");
-      }
-    }
-    (config as Record<string, unknown>)[property] = rawValue;
-  }
+  const setting = profileValueFromCommand(name, rawValue);
+  const config = { ...current } as Record<string, unknown>;
+  config[setting.name] = setting.value;
   writeProfile(root, config);
-  return config;
+  return config as ProfileConfig;
 }
 
 export function unsetProfileValue(root: string, name: string): ProfileConfig {
-  if (!CONFIG_KEYS.has(name)) {
-    throw new Error(`unknown profile setting: ${name}`);
-  }
+  const setting = resolveProfileSettingName(name);
+  if (setting === null) throw new UsageError(`unknown profile setting: ${name}`);
   const config = { ...readProfile(root) } as Record<string, unknown>;
-  const property = aliases[name] ?? name;
-  delete config[property];
+  delete config[setting];
   writeProfile(root, config);
-  return config;
+  return config as ProfileConfig;
 }
 
 export function resolveQuickUrl(base: string, quickPath: string): string {
