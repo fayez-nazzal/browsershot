@@ -1,5 +1,14 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { expandOutputTemplate, validateOutputGroup, validateOutputLabel, type OutputTemplateValues } from "./output-path.ts";
+
+const TEMPLATE_EXAMPLE: OutputTemplateValues = {
+  date: "2026-09-05",
+  time: "14-30-12",
+  timestamp: "2026-09-05_14-30-12",
+  host: "example.com",
+  route: "pricing",
+};
 
 export interface ProfileConfig {
   baseUrl?: string;
@@ -8,6 +17,8 @@ export interface ProfileConfig {
   expectElement?: string;
   expectText?: string;
   output?: string;
+  group?: string;
+  label?: string;
   json?: boolean;
   autoOpen?: boolean;
   publish?: string;
@@ -24,7 +35,7 @@ const aliases: Record<string, string> = {
   "auth-redirect": "authRedirect",
   "expect-text": "expectText", "expect-element": "expectElement", "auto-open": "autoOpen",
 };
-const CONFIG_KEYS = new Set(["baseUrl", "base-url", "url", "authUser", "auth-user", "authRedirect", "auth-redirect", "expectElement", "expect-element", "expectText", "expect-text", "output", "json", "autoOpen", "auto-open", "publish"]);
+const CONFIG_KEYS = new Set(["baseUrl", "base-url", "url", "authUser", "auth-user", "authRedirect", "auth-redirect", "expectElement", "expect-element", "expectText", "expect-text", "output", "group", "label", "json", "autoOpen", "auto-open", "publish"]);
 
 export function profilePaths(root = process.cwd()): ProfilePaths {
   const directory = join(root, ".browsershot");
@@ -42,7 +53,7 @@ function validateConfig(config: unknown): ProfileConfig {
   delete normalizedInput.url;
   const result: ProfileConfig = {};
   for (const [key, value] of Object.entries(normalizedInput)) {
-    if (!["baseUrl", "authUser", "authRedirect", "expectElement", "expectText", "output", "json", "autoOpen", "publish", "url"].includes(key)) {
+    if (!["baseUrl", "authUser", "authRedirect", "expectElement", "expectText", "output", "group", "label", "json", "autoOpen", "publish", "url"].includes(key)) {
       throw new Error(`unknown profile setting: ${key}`);
     }
     if (["json", "autoOpen"].includes(key)) {
@@ -57,6 +68,14 @@ function validateConfig(config: unknown): ProfileConfig {
   if (result.baseUrl !== undefined) {
     try { new URL(result.baseUrl); } catch { throw new Error("profile setting baseUrl must be an absolute URL"); }
   }
+  if (result.output !== undefined && (result.group !== undefined || result.label !== undefined)) {
+    throw new Error("saved output cannot be combined with group or label; unset output or the structured naming settings first");
+  }
+  for (const key of ["output", "group", "label"] as const) {
+    if (result[key] !== undefined) expandOutputTemplate(result[key], TEMPLATE_EXAMPLE);
+  }
+  if (result.group !== undefined) validateOutputGroup(result.group, TEMPLATE_EXAMPLE);
+  if (result.label !== undefined) validateOutputLabel(result.label, TEMPLATE_EXAMPLE);
   return result;
 }
 

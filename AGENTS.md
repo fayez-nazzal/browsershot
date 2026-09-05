@@ -37,6 +37,9 @@ Use flags when a capture needs more than a simple route:
 - `--json` prints one machine-readable result. Use it in scripts.
 - `--auth` captures an authenticated page using `authstate`.
 - `--publish` sends the PNG to a saved or explicit destination.
+- `--group` collects related captures under a directory, such as `PR-123`.
+- `--label` describes the captured state, such as `menu-open`.
+- `--output` sets an exact path or template when group and label are not enough.
 
 Actions, checks, and inspection fit in one invocation:
 
@@ -45,6 +48,12 @@ browsershot /dashboard --act 'click:#menu' --inspect '#menu' --json
 ```
 
 See `README.md` for the complete flag list.
+
+The default path is
+`.browsershot/captures/{host}/{route}_{timestamp}.png`. Output, group, and label
+templates support `{host}`, `{route}`, `{date}`, `{time}`, and `{timestamp}`.
+Prefer `--group` and `--label` because they add safe separators automatically;
+use `--output` only when the complete destination matters.
 
 ## Check the result
 

@@ -35,6 +35,32 @@ test("profile write and read preserve saved settings", () => {
   expect(readFileSync(profilePaths(root).config, "utf8")).toContain('"authRedirect"');
 });
 
+test("profile preserves structured output group and label settings", () => {
+  const root = scratch();
+  const config: ProfileConfig = { baseUrl: "https://example.com", group: "PR-123", label: "approved" };
+  writeProfile(root, config);
+  expect(readProfile(root)).toEqual(config);
+});
+
+test("profile rejects a full output override combined with structured naming", () => {
+  const root = scratch();
+  expect(() => writeProfile(root, { output: "shot.png", group: "PR-123" })).toThrow("output cannot be combined");
+  expect(() => writeProfile(root, { output: "shot.png", label: "approved" })).toThrow("output cannot be combined");
+});
+
+test("profile rejects unknown output placeholders when saved", () => {
+  const root = scratch();
+  expect(() => writeProfile(root, { label: "{timstamp}" })).toThrow("unknown output placeholder");
+});
+
+test("profile rejects structured names that cannot produce safe paths", () => {
+  const root = scratch();
+  expect(() => writeProfile(root, { group: "/absolute" })).toThrow("relative path");
+  expect(() => writeProfile(root, { group: "../escape" })).toThrow("stay inside");
+  expect(() => writeProfile(root, { label: "menu/open" })).toThrow("path separators");
+  expect(() => writeProfile(root, { label: "..." })).toThrow("filename-safe text");
+});
+
 test("quick paths append inside hash routes and preserve the query", () => {
   expect(resolveQuickUrl("http://localhost:8990/app?organizationId=8#/workspaces/8", "/clients-needing-attention")).toBe(
     "http://localhost:8990/app?organizationId=8#/workspaces/8/clients-needing-attention",

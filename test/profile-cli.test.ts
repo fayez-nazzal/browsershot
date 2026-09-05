@@ -44,6 +44,30 @@ test("publish key round-trips through config set show and unset", () => {
   expect(run(root, "config", "show").stdout.toString()).not.toContain('"publish"');
 });
 
+test("group and label round-trip through config commands", () => {
+  const root = scratch();
+  expect(run(root, "config", "set", "group", "PR-123").exitCode).toBe(0);
+  expect(run(root, "config", "set", "label", "menu-open").exitCode).toBe(0);
+  const shown = run(root, "config", "show").stdout.toString();
+  expect(shown).toContain('"group": "PR-123"');
+  expect(shown).toContain('"label": "menu-open"');
+});
+
+test("saved output cannot be mixed with group or label", () => {
+  const root = scratch();
+  expect(run(root, "config", "set", "output", "shot.png").exitCode).toBe(0);
+  const result = run(root, "config", "set", "group", "PR-123");
+  expect(result.exitCode).toBe(2);
+  expect(result.stderr.toString()).toContain("output cannot be combined");
+});
+
+test("config commands do not save unsafe structured names", () => {
+  const root = scratch();
+  expect(run(root, "config", "set", "group", "/absolute").exitCode).toBe(2);
+  expect(run(root, "config", "set", "group", "../escape").exitCode).toBe(2);
+  expect(run(root, "config", "set", "label", "menu/open").exitCode).toBe(2);
+});
+
 test("quick capture errors before browser launch when the saved URL is missing", () => {
   const root = scratch();
 

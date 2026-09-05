@@ -3,7 +3,7 @@
 import { parseArgs } from "node:util";
 import packageJson from "../package.json";
 import { mkdirSync, statSync, writeFileSync } from "node:fs";
-import { join, dirname, resolve } from "node:path";
+import { dirname } from "node:path";
 import { createHash } from "node:crypto";
 import { capture, isAuthenticationCaptureFailure, NAVIGATION_TIMEOUT_MS, VIEWPORT_WIDTH, VIEWPORT_HEIGHT, type CaptureOptions, type CaptureResult } from "./capture.ts";
 import { drawAnnotations, parseBoxFlag, parseMarkerFlag, type BoxAnnotation, type MarkerAnnotation } from "./annotate.ts";
@@ -15,6 +15,9 @@ import { resolveAuthJar, AuthStateFailure, discoverAuthCredentials } from "./aut
 import { profilePaths, readProfile, resolveQuickUrl, setProfileValue, unsetProfileValue } from "./profile.ts";
 import { openFile } from "./open.ts";
 import { createRunTmpDir, ensureWorkspace, removeRunTmpDir } from "./workspace.ts";
+import { resolveOutputPath, timestamp } from "./output-path.ts";
+
+export { timestamp } from "./output-path.ts";
 
 export const VERSION = `${packageJson.version}-alpha`;
 
@@ -38,8 +41,13 @@ USAGE
   browsershot config show | path
 
 CAPTURE
-  -o, --output <path>       Output PNG path
-                            (default: .browsershot/captures/<timestamp>.png)
+  -o, --output <path>       Exact PNG path or template (advanced override)
+      --group <path>        Group under captures, before the host directory
+      --label <text>        Describe the captured state in the file name
+                            Example: --group PR-123 --label menu-open
+  Default: .browsershot/captures/{host}/{route}_{timestamp}.png
+  Output placeholders: {host}, {route}, {date}, {time}, {timestamp}.
+  Use {{ and }} for literal braces. Unknown placeholders are errors.
       --size <WxH>          Viewport size (default: 1440x900)
       --delay <ms>          Extra wait after load before capture (default: 0)
       --full-page           Capture the whole scrollable page
@@ -129,9 +137,9 @@ OUTPUT AND ERRORS
 
 CONFIGURATION
   Canonical saved names: baseUrl, authUser, expectElement, expectText, output,
-  json, autoOpen and publish. Kebab-case aliases are accepted for config set
-  and unset, including base-url, auth-user, expect-element, expect-text and
-  auto-open. Reads never rewrite the config file.
+  group, label, json, autoOpen and publish. Kebab-case aliases are accepted for
+  config set and unset, including base-url, auth-user, expect-element,
+  expect-text and auto-open. Reads never rewrite the config file.
 
 META
       --verbose         Playwright progress detail on stderr: phase timings,
@@ -145,6 +153,8 @@ export function parseCliArgs(argv: string[]) {
     args: normalizeArgv(argv),
     options: {
       output: { type: "string", short: "o" },
+      group: { type: "string" },
+      label: { type: "string" },
       size: { type: "string" },
       "full-page": { type: "boolean", default: false },
       auth: { type: "boolean", default: false },
@@ -238,12 +248,6 @@ export function resolveCaptureUrl(positional: string, profile: ReturnType<typeof
     return resolveQuickUrl(profile.baseUrl, positional);
   }
   return normalizeUrl(positional);
-}
-
-export function timestamp(): string {
-  const d = new Date();
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
 }
 
 export function sha256Hex(bytes: Uint8Array): string {
@@ -452,7 +456,6 @@ async function main() {
   } else if (values.version) {
     process.stdout.write(`${VERSION}\n`);
   } else {
-    const quickCapture = positionals[0] != null && positionals[0].startsWith("/");
     ensureWorkspace();
     if (positionals[0] === "config") {
       runConfigCommand(positionals.slice(1));
@@ -463,9 +466,7 @@ async function main() {
     try {
       profile = readProfile();
     } catch (e) {
-      if (quickCapture) {
-        fail((e as Error).message);
-      }
+      fail((e as Error).message);
     }
     if (positionals.length === 0) {
       fail("missing <url> or <quick-path> (try: browsershot --help)");
@@ -483,6 +484,24 @@ async function main() {
       defaults = resolveRunDefaults(values, profile);
     } catch (e) { fail((e as Error).message); }
     const json = defaults.json;
+
+    const explicitOutput = values.output !== undefined;
+    const explicitStructuredOutput = values.group !== undefined || values.label !== undefined;
+    if (explicitOutput && explicitStructuredOutput) {
+      fail("--output cannot be combined with --group or --label");
+    }
+    let out: string;
+    try {
+      out = resolveOutputPath({
+        capturesDirectory: profilePaths().captures,
+        url,
+        output: explicitOutput ? values.output : explicitStructuredOutput ? undefined : profile.output,
+        group: explicitOutput ? undefined : values.group ?? profile.group,
+        label: explicitOutput ? undefined : values.label ?? profile.label,
+      });
+    } catch (e) {
+      fail((e as Error).message);
+    }
 
     let publishDest: string | null = null;
     try {
@@ -598,15 +617,6 @@ async function main() {
       verbose,
       log: (message: string) => process.stderr.write(`browsershot: ${message}\n`),
     };
-
-    let out = join(profilePaths().captures, `${timestamp()}.png`);
-    if (profile.output != null) {
-      out = profile.output;
-    }
-    if (values.output != null) {
-      out = values.output;
-    }
-    out = resolve(out);
 
     const success = emptySuccess();
 

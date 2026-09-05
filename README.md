@@ -80,13 +80,14 @@ Save only what should be the default for that project:
 browsershot config set baseUrl https://example.com
 browsershot config set expectElement '#app'
 browsershot config set authUser member
-browsershot config set output .browsershot/captures/latest.png
+browsershot config set group regression
 browsershot config set json
 browsershot config show
 ```
 
 The canonical setting names are `baseUrl`, `authUser`, `authRedirect`, `expectElement`,
-`expectText`, `output`, `json`, `autoOpen`, and `publish`. `config unset <name>`
+`expectText`, `output`, `group`, `label`, `json`, `autoOpen`, and `publish`.
+`config unset <name>`
 removes a saved setting. Config commands also accept the existing kebab-case
 aliases: `base-url`, `url`, `auth-user`, `expect-element`, `expect-text`, and
 `auth-redirect`, and `auto-open`. Reads accept legacy `url` without rewriting the file; explicit
@@ -104,6 +105,63 @@ An explicit `--expect-text` or `--expect-element` replaces the complete saved
 assertion set for that run. If both are supplied, both must pass. `--no-expect`
 turns off content assertions only; HTTP status and blank-render guards remain
 active. A positive and negative flag for the same setting is a usage error.
+
+## Friendly capture names
+
+Browsershot organizes captures by site and route without any configuration:
+
+```text
+.browsershot/captures/example.com/pricing_2026-09-05_14-30-12.png
+```
+
+Use `--group` to collect related captures and `--label` to describe the state
+shown in one capture:
+
+```sh
+browsershot /pricing --group PR-123 --label menu-open
+```
+
+That produces a path shaped like:
+
+```text
+.browsershot/captures/PR-123/example.com/pricing_menu-open_2026-09-05_14-30-12.png
+```
+
+Browsershot supplies the separators and `.png` extension. A group may contain
+several relative directory segments, while a label is always one safe filename
+segment. Unsafe filename characters are replaced, and unusually long values
+are shortened to fit common filesystem limits. Save either when it is useful
+across runs:
+
+```sh
+browsershot config set group 'regression/{date}'
+browsershot config set label desktop
+```
+
+The values may use these placeholders:
+
+- `{host}` — the URL host, including a port when present
+- `{route}` — the URL path as a safe slug, or `home` for `/`
+- `{date}` — local date such as `2026-09-05`
+- `{time}` — local time such as `14-30-12`
+- `{timestamp}` — local date and time such as `2026-09-05_14-30-12`
+
+Queries and fragments are intentionally excluded from generated names so URLs
+do not leak secrets or create unstable paths. Unknown placeholders fail before
+capture, which makes spelling mistakes visible. Write `{{` or `}}` when a
+literal brace is needed.
+
+Keep `--output` for the less common case where the complete destination matters:
+
+```sh
+browsershot /pricing --output '/tmp/{host}/{route}_{timestamp}.png'
+browsershot /pricing --output .browsershot/captures/latest.png
+```
+
+An explicit `--output` cannot be combined with an explicit `--group` or
+`--label`. A run-level `--output` overrides saved naming settings. Conversely,
+an explicit group or label uses the structured default instead of a saved
+`output`. Saved `output` cannot coexist with saved `group` or `label`.
 
 ## The capture lifecycle
 
@@ -227,9 +285,11 @@ as `json` and `autoOpen` take no value and turn on when set. `config unset`
 removes them. `config show` prints normalized settings, and `config path` prints
 the current config path.
 
-The default PNG path is `.browsershot/captures/<timestamp>.png`. `--output`
-accepts any writable path. `-h, --help` prints the compact command reference;
-`-v, --version` prints the version.
+The default PNG path is
+`.browsershot/captures/{host}/{route}_{timestamp}.png`. `--group` and `--label`
+cover everyday organization; `--output` accepts any writable path or template
+when the exact destination matters. `-h, --help` prints the compact command
+reference; `-v, --version` prints the version.
 
 ## For agents
 
