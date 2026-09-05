@@ -3,27 +3,10 @@
 import { parseArgs } from "node:util";
 import packageJson from "../package.json";
 import { DEFAULT_EMBED_WIDTH } from "./publish.ts";
-import { ExitError, EXIT_FAILED, EXIT_OK, EXIT_USAGE, type ExitCode } from "./exit-codes.ts";
+import { ExitError, EXIT_FAILED, UsageError } from "./exit-codes.ts";
 import { profilePaths, readProfile, setProfileValue, unsetProfileValue } from "./profile.ts";
-import { ensureWorkspace } from "./workspace.ts";
-import { resolveRunOptions } from "./run-options.ts";
+import { resolveRunOptions, type CaptureFlags } from "./run-options.ts";
 import { runCapture } from "./run-capture.ts";
-
-export { timestamp } from "./output-path.ts";
-export {
-  normalizeUrl,
-  parseSize,
-  resolveCaptureUrl,
-  resolvePublishDestination as resolvePublishDest,
-} from "./run-options.ts";
-export {
-  captureWithAuthRetry,
-  emptySuccess,
-  inspectJsonPath,
-  inspectSummary,
-  sha256Hex,
-} from "./run-capture.ts";
-export type { SuccessSummary } from "./run-capture.ts";
 
 export const VERSION = `${packageJson.version}-alpha`;
 
@@ -198,8 +181,6 @@ export function parseCliArgs(argv: string[]) {
   });
 }
 
-function parse() { return parseCliArgs(process.argv.slice(2)); }
-
 export function normalizeArgv(argv: string[]): string[] {
   const result: string[] = [];
   let index = 0;
@@ -222,101 +203,112 @@ export function normalizeArgv(argv: string[]): string[] {
   return result;
 }
 
-function fail(msg: string, code: ExitCode = EXIT_USAGE): never {
-  process.stderr.write(`browsershot: ${msg}\n`);
+function writeStdout(text: string): void {
+  process.stdout.write(text);
+}
+
+function writeStderr(text: string): void {
+  process.stderr.write(text);
+}
+
+function fail(error: unknown): never {
+  let message = String(error);
+  if (error instanceof Error) {
+    message = error.message;
+  }
+  let code = EXIT_FAILED;
+  if (error instanceof ExitError) {
+    code = error.code;
+  }
+  process.stderr.write(`browsershot: ${message}\n`);
   process.exit(code);
 }
 
-function runConfigCommand(args: string[]): never {
+function toUsageError(error: unknown): UsageError {
+  let result = new UsageError((error as Error).message);
+  if (error instanceof UsageError) {
+    result = error;
+  }
+  return result;
+}
+
+function parse(): ReturnType<typeof parseCliArgs> {
+  let parsed: ReturnType<typeof parseCliArgs>;
+  try {
+    parsed = parseCliArgs(process.argv.slice(2));
+  } catch (error) {
+    throw toUsageError(error);
+  }
+  return parsed;
+}
+
+function runConfigCommand(args: string[]): void {
   const root = process.cwd();
   const command = args[0];
   try {
     if (command === "set") {
       if (args.length < 2 || args.length > 3) {
-        fail("config set needs a setting and value");
+        throw new UsageError("config set needs a setting and value");
       }
       const config = setProfileValue(root, args[1]!, args[2]);
-      process.stdout.write(`${JSON.stringify(config)}\n`);
+      writeStdout(`${JSON.stringify(config)}\n`);
     } else if (command === "unset") {
       if (args.length !== 2) {
-        fail("config unset needs a setting");
+        throw new UsageError("config unset needs a setting");
       }
       const config = unsetProfileValue(root, args[1]!);
-      process.stdout.write(`${JSON.stringify(config)}\n`);
+      writeStdout(`${JSON.stringify(config)}\n`);
     } else if (command === "show") {
       if (args.length !== 1) {
-        fail("config show takes no arguments");
+        throw new UsageError("config show takes no arguments");
       }
-      process.stdout.write(`${JSON.stringify(readProfile(root), null, 2)}\n`);
+      writeStdout(`${JSON.stringify(readProfile(root), null, 2)}\n`);
     } else if (command === "path") {
       if (args.length !== 1) {
-        fail("config path takes no arguments");
+        throw new UsageError("config path takes no arguments");
       }
-      process.stdout.write(`${profilePaths(root).config}\n`);
+      writeStdout(`${profilePaths(root).config}\n`);
     } else {
-      fail("config command must be set, unset, show, or path");
+      throw new UsageError("config command must be set, unset, show, or path");
     }
-  } catch (e) {
-    fail((e as Error).message);
+  } catch (error) {
+    throw toUsageError(error);
   }
-  process.exit(EXIT_OK);
 }
 
-async function main() {
-  let parsed: ReturnType<typeof parse>;
-  try {
-    parsed = parse();
-  } catch (e) {
-    fail((e as Error).message);
+async function runCaptureCommand(values: CaptureFlags, positionals: string[]): Promise<void> {
+  if (positionals.length === 0) {
+    throw new UsageError("missing <url> or <quick-path> (try: browsershot --help)");
   }
-  const { values, positionals } = parsed;
+  if (positionals.length > 1) {
+    throw new UsageError(`unexpected extra arguments: ${positionals.slice(1).join(" ")}`);
+  }
+  const cwd = process.cwd();
+  const profile = readProfile(cwd);
+  const paths = profilePaths(cwd);
+  const input = { positional: positionals[0]!, flags: values, profile, paths, cwd };
+  const resolved = resolveRunOptions(input);
+  const io = { stdout: writeStdout, stderr: writeStderr };
+  await runCapture(resolved, io);
+}
 
+async function main(): Promise<void> {
+  const { values, positionals } = parse();
   if (values.help) {
-    process.stdout.write(HELP);
+    writeStdout(HELP);
   } else if (values.version) {
-    process.stdout.write(`${VERSION}\n`);
+    writeStdout(`${VERSION}\n`);
+  } else if (positionals[0] === "config") {
+    runConfigCommand(positionals.slice(1));
   } else {
-    ensureWorkspace();
-    if (positionals[0] === "config") {
-      runConfigCommand(positionals.slice(1));
-    }
-    let profile: ReturnType<typeof readProfile> = {};
-    try {
-      profile = readProfile();
-    } catch (e) {
-      fail((e as Error).message);
-    }
-    if (positionals.length === 0) {
-      fail("missing <url> or <quick-path> (try: browsershot --help)");
-    }
-    if (positionals.length > 1) {
-      fail(`unexpected extra arguments: ${positionals.slice(1).join(" ")}`);
-    }
-    const cwd = process.cwd();
-    let runOptions: ReturnType<typeof resolveRunOptions>;
-    try {
-      runOptions = resolveRunOptions({
-        positional: positionals[0]!,
-        flags: values,
-        profile,
-        paths: profilePaths(cwd),
-        cwd,
-      });
-    } catch (e) { fail((e as Error).message); }
-    try {
-      await runCapture(runOptions, {
-        stdout: (text) => process.stdout.write(text),
-        stderr: (text) => process.stderr.write(text),
-      });
-    } catch (e) {
-      if (e instanceof ExitError) {
-        fail(e.message, e.code);
-      }
-      fail((e as Error).message, EXIT_FAILED);
-    }
+    await runCaptureCommand(values, positionals);
   }
 }
 
 if (import.meta.main) {
-  await main();
+  try {
+    await main();
+  } catch (error) {
+    fail(error);
+  }
 }

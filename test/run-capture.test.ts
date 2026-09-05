@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runCapture, captureWithAuthRetry, emptySuccess, type RunCaptureDependencies } from "../src/run-capture.ts";
+import { runCapture, captureWithAuthRetry, emptySuccess, sha256Hex, type RunCaptureDependencies } from "../src/run-capture.ts";
 import type { ResolvedRunOptions } from "../src/run-options.ts";
 import { AuthStateFailure } from "../src/authstate.ts";
 import { AuthenticationCaptureFailure } from "../src/capture.ts";
@@ -38,6 +38,19 @@ test("the runner executes one shared pipeline and always cleans run temp", async
   expect(stderr.join("")).toContain("browsershot: wrote");
   expect(existsSync(outputPath)).toBe(true);
   expect(readdirSync(join(cwd, ".browsershot", "tmp"))).toEqual([]);
+});
+
+test("sha256Hex hashes bytes to lowercase hex", () => {
+  const empty = sha256Hex(new Uint8Array());
+  expect(empty).toBe("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+  const abc = sha256Hex(new TextEncoder().encode("abc"));
+  expect(abc).toBe("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+});
+
+test("sha256Hex distinguishes different byte payloads", () => {
+  const a = sha256Hex(new TextEncoder().encode("page-a"));
+  const b = sha256Hex(new TextEncoder().encode("page-b"));
+  expect(a).not.toBe(b);
 });
 
 function optionsFor(cwd: string, patch: Partial<ResolvedRunOptions> = {}): ResolvedRunOptions {
