@@ -19,6 +19,7 @@ test("profile write and read preserve saved settings", () => {
   const config: ProfileConfig = {
     baseUrl: "http://localhost:8990/app#/workspaces/8",
     authUser: "test-user",
+    authRedirect: "/users/sign_in",
     expectText: "DocClever",
     output: "/tmp/docclever.png",
     json: true,
@@ -31,6 +32,7 @@ test("profile write and read preserve saved settings", () => {
   expect(readProfile(root)).toEqual(config);
   expect(existsSync(profilePaths(root).config)).toBe(true);
   expect(readFileSync(profilePaths(root).config, "utf8")).toContain('"authUser"');
+  expect(readFileSync(profilePaths(root).config, "utf8")).toContain('"authRedirect"');
 });
 
 test("quick paths append inside hash routes and preserve the query", () => {

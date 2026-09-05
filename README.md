@@ -85,11 +85,11 @@ browsershot config set json
 browsershot config show
 ```
 
-The canonical setting names are `baseUrl`, `authUser`, `expectElement`,
+The canonical setting names are `baseUrl`, `authUser`, `authRedirect`, `expectElement`,
 `expectText`, `output`, `json`, `autoOpen`, and `publish`. `config unset <name>`
 removes a saved setting. Config commands also accept the existing kebab-case
 aliases: `base-url`, `url`, `auth-user`, `expect-element`, `expect-text`, and
-`auto-open`. Reads accept legacy `url` without rewriting the file; explicit
+`auth-redirect`, and `auto-open`. Reads accept legacy `url` without rewriting the file; explicit
 writes use `baseUrl`.
 
 Saved settings are convenient, not binding. Override them for one capture:
@@ -168,6 +168,18 @@ Use `--auth-credentials <path>` when discovery should use a specific file.
 `--auth-user` implies `--auth`. Credentials and storage-state paths are never
 saved in the Browsershot profile. If a saved user would trigger auth for a
 particular public page, use `--no-auth`.
+
+Browsershot always retries once after an HTTP 401 or 403. Applications that
+redirect unauthenticated users to a login route can opt into the same retry by
+providing a literal fragment of that redirect URL:
+
+```sh
+browsershot /account --auth --auth-redirect /users/sign_in
+```
+
+The redirect rule can be saved with `browsershot config set authRedirect
+/users/sign_in`, or disabled for one run with `--no-auth-redirect`. No
+redirect matching is performed unless a fragment is explicitly configured.
 
 ## Publishing
 

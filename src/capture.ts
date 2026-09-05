@@ -10,6 +10,7 @@ export interface CaptureOptions {
   fullPage: boolean;
   delayMs: number;
   cookiesPath?: string;
+  authRedirect?: string;
   allowBlank: boolean;
   inspect?: InspectOptions;
   inspectFooter?: string;
@@ -49,22 +50,11 @@ const RENDER_POLL_INTERVAL_MS = 250;
 const RENDER_POLL_TIMEOUT_MS = 10000;
 export const ELEMENT_READY_TIMEOUT_MS = 10000;
 
-function looksLikeAuthenticationRedirect(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    return /(?:^|[\\/_-])(login|signin|sign-in|authenticate|authentication)(?:[\\/_ .?#-]|$)/i.test(
-      `${parsed.pathname}${parsed.search}${parsed.hash}`,
-    );
-  } catch {
-    return false;
-  }
-}
-
-function authenticationFailure(httpStatus: number | null, finalUrl: string, requestedUrl: string): AuthenticationCaptureFailure | null {
+function authenticationFailure(httpStatus: number | null, finalUrl: string, requestedUrl: string, authRedirect?: string): AuthenticationCaptureFailure | null {
   if (httpStatus === 401 || httpStatus === 403) {
     return new AuthenticationCaptureFailure(`page requires authentication: HTTP ${httpStatus}`);
   }
-  if (finalUrl !== requestedUrl && looksLikeAuthenticationRedirect(finalUrl)) {
+  if (authRedirect != null && finalUrl !== requestedUrl && finalUrl.includes(authRedirect)) {
     return new AuthenticationCaptureFailure("page redirected to an authentication page");
   }
   return null;
@@ -178,7 +168,7 @@ export async function preparePage(page: Page, o: CaptureOptions): Promise<void> 
   o.log?.(`page loaded in ${((Date.now() - started) / 1000).toFixed(1)}s`);
   const httpStatus = response != null ? response.status() : null;
   const finalUrl = response != null ? response.url() : page.url();
-  const authFailure = authenticationFailure(httpStatus, finalUrl, o.url);
+  const authFailure = authenticationFailure(httpStatus, finalUrl, o.url, o.authRedirect);
   if (authFailure != null) {
     throw authFailure;
   }

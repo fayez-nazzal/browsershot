@@ -98,6 +98,11 @@ test("resolveRunDefaults applies saved settings and per-run replacements", () =>
   expect(resolveRunDefaults({ "auth-credentials": "/tmp/creds" }, profile)).toMatchObject({ authUser: "member", authRequested: true, authCredentials: "/tmp/creds" });
 });
 
+test("resolveRunDefaults supports an opt-in auth redirect fragment", () => {
+  expect(resolveRunDefaults({ "auth-redirect": "/users/sign_in" }, {})).toMatchObject({ authRedirect: "/users/sign_in" });
+  expect(resolveRunDefaults({ "no-auth-redirect": true }, { authRedirect: "/login" })).toMatchObject({ authRedirect: undefined });
+});
+
 test("resolveRunDefaults rejects contradictory or empty options", () => {
   expect(() => resolveRunDefaults({ "no-auth": true, "auth-user": "admin" }, {})).toThrow(/conflict/);
   expect(() => resolveRunDefaults({ "no-expect": true, "expect-text": "Ready" }, {})).toThrow(/conflict/);
@@ -105,6 +110,7 @@ test("resolveRunDefaults rejects contradictory or empty options", () => {
   expect(() => resolveRunDefaults({ "auto-open": true, "no-auto-open": true }, {})).toThrow(/conflict/);
   expect(() => resolveRunDefaults({ "expect-text": "  " }, {})).toThrow(/non-empty/);
   expect(() => resolveRunDefaults({ "expect-element": "  " }, {})).toThrow(/non-empty/);
+  expect(() => resolveRunDefaults({ "no-auth-redirect": true, "auth-redirect": "/login" }, {})).toThrow(/conflict/);
 });
 
 function captureResult() {

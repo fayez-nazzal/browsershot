@@ -14,6 +14,8 @@ test("help explains both capture entry paths and exposes every capture flag", ()
     "--expect-element",
     "--no-expect",
     "--no-auth",
+    "--auth-redirect",
+    "--no-auth-redirect",
     "--no-json",
     "--no-auto-open",
     "--act",

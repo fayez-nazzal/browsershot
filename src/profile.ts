@@ -4,6 +4,7 @@ import { join } from "node:path";
 export interface ProfileConfig {
   baseUrl?: string;
   authUser?: string;
+  authRedirect?: string;
   expectElement?: string;
   expectText?: string;
   output?: string;
@@ -20,9 +21,10 @@ interface ProfilePaths {
 
 const aliases: Record<string, string> = {
   url: "baseUrl", "base-url": "baseUrl", "auth-user": "authUser",
+  "auth-redirect": "authRedirect",
   "expect-text": "expectText", "expect-element": "expectElement", "auto-open": "autoOpen",
 };
-const CONFIG_KEYS = new Set(["baseUrl", "base-url", "url", "authUser", "auth-user", "expectElement", "expect-element", "expectText", "expect-text", "output", "json", "autoOpen", "auto-open", "publish"]);
+const CONFIG_KEYS = new Set(["baseUrl", "base-url", "url", "authUser", "auth-user", "authRedirect", "auth-redirect", "expectElement", "expect-element", "expectText", "expect-text", "output", "json", "autoOpen", "auto-open", "publish"]);
 
 export function profilePaths(root = process.cwd()): ProfilePaths {
   const directory = join(root, ".browsershot");
@@ -40,7 +42,7 @@ function validateConfig(config: unknown): ProfileConfig {
   delete normalizedInput.url;
   const result: ProfileConfig = {};
   for (const [key, value] of Object.entries(normalizedInput)) {
-    if (!["baseUrl", "authUser", "expectElement", "expectText", "output", "json", "autoOpen", "publish", "url"].includes(key)) {
+    if (!["baseUrl", "authUser", "authRedirect", "expectElement", "expectText", "output", "json", "autoOpen", "publish", "url"].includes(key)) {
       throw new Error(`unknown profile setting: ${key}`);
     }
     if (["json", "autoOpen"].includes(key)) {

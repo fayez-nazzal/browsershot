@@ -42,14 +42,19 @@ test("preparePage classifies HTTP 401 as an authentication failure", async () =>
   await expect(preparePage(page as never, BASE_OPTIONS)).rejects.toBeInstanceOf(AuthenticationCaptureFailure);
 });
 
-test("preparePage classifies a clear login redirect as an authentication failure", async () => {
+test("preparePage classifies a configured redirect fragment as an authentication failure", async () => {
   const page = fakeRedirectPage("https://example.com/sign-in?return=/dashboard");
-  await expect(preparePage(page as never, BASE_OPTIONS)).rejects.toBeInstanceOf(AuthenticationCaptureFailure);
+  await expect(preparePage(page as never, { ...BASE_OPTIONS, authRedirect: "/sign-in" })).rejects.toBeInstanceOf(AuthenticationCaptureFailure);
 });
 
-test("preparePage leaves generic application URLs unclassified", async () => {
-  const page = fakeRedirectPage("https://example.com/dashboard");
+test("preparePage leaves redirects unclassified when no fragment is configured", async () => {
+  const page = fakeRedirectPage("https://example.com/sign-in?return=/dashboard");
   await expect(preparePage(page as never, BASE_OPTIONS)).resolves.toBeUndefined();
+});
+
+test("preparePage matches the configured redirect fragment literally", async () => {
+  const page = fakeRedirectPage("https://example.com/auth?return=%2Fdashboard");
+  await expect(preparePage(page as never, { ...BASE_OPTIONS, authRedirect: "auth?return=" })).rejects.toBeInstanceOf(AuthenticationCaptureFailure);
 });
 
 test("preparePage accepts a 404 when --allow-status is set", async () => {
