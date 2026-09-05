@@ -1,25 +1,31 @@
 # browsershot
 
-Browsershot gives an agent a real browser, a screenshot, and enough evidence to
-know whether the page reached the state it was meant to reach.
-
-The usual capture is deliberately small:
+A CLI tool that lets you take screenshot of any page in one quick command:
 
 ```sh
-browsershot https://example.com/pricing
+browsershot https://example.com/pricing # Take screenshot of pricing page
 ```
 
-That command needs no project profile. Browsershot loads the URL, waits for the
-page to render, and writes an absolute PNG path. When a project has a stable
-base URL, save it once and use short routes from then on:
+It loads the URL, waits for the page to render, and writes a PNG path with a JSON summary.
+
+## AI Agents
+
+Browsershot works great with AI Agents, it's efficient enough to support AI Agents execute and validate efficiently, faster, with less tokens:
+- Supports project-based configurations, this way a short command does the job without needing to provide tons of flags.
+- Helps AI Agents do design work, it can take screenshots of implemented web pages and compare with design reference using vision.
+- Helps write PRs with screenshot evidence of the implemented pages.
+- Supports structured JSON output per command so AI Agents get quick summaries in its context window without having to re-check and fire many tool calls.
+
+## Project-based configutations
+
+When a project has a stable base URL, save it once and use short routes:
 
 ```sh
-browsershot config set baseUrl https://example.com
-browsershot /pricing
+browsershot config set baseUrl https://example.com # Saved to .browsershot/config.json where invoked
+browsershot /pricing # Works across multiple commands
 ```
 
-This is the same capture pipeline. The path is simply resolved against the
-saved base in the current directory. A complete URL always wins over the saved
+This is the same capture pipeline. The path is simply resolved against the saved base in the current directory. A complete URL always wins over the saved
 base and is never prefixed by it.
 
 ## Make one capture prove something
