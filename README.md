@@ -143,7 +143,15 @@ browsershot /settings \
 
 Supported steps are `focus`, `click`, `hover`, `press`, `type`, and `wait` in
 milliseconds. Hover uses Playwright's locator hover behavior, so hover states
-are applied before inspection and screenshot capture. For example:
+are applied before inspection and screenshot capture. When `hover` is the final
+step, the capture also draws a polished SVG cursor horizontally centered near
+the element's bottom edge. It follows the element's computed CSS cursor, including
+pointer, text, resize, wait, grab, and prohibited variants. `cursor: none`
+draws nothing, and a custom cursor URL uses its declared fallback keyword.
+Hovered links also receive a compact black URL preview with white text,
+positioned below the cursor and centered to the same axis, with capture-bound
+clamping near the viewport edge.
+For example:
 
 ```sh
 browsershot /dashboard \

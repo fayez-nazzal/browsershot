@@ -74,4 +74,22 @@ describe("runActions", () => {
 
     await expect(runActions(page as never, parseActions("hover:#missing"), 1000)).rejects.toThrow("locator did not resolve");
   });
+
+  it("retains the target only when hover is the final action", async () => {
+    const handle = { id: "hovered-element" };
+    const page = {
+      locator: () => ({
+        first: () => ({
+          waitFor: async () => {},
+          elementHandle: async () => handle,
+          hover: async () => {},
+          click: async () => {},
+        }),
+      }),
+      waitForTimeout: async () => {},
+    };
+
+    expect(await runActions(page as never, parseActions("click:#menu;hover:#trigger"), 1000)).toBe(handle as never);
+    expect(await runActions(page as never, parseActions("hover:#trigger;click:#trigger"), 1000)).toBeNull();
+  });
 });

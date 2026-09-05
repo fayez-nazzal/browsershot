@@ -1,6 +1,7 @@
 import { chromium } from "playwright";
 import type { Browser, BrowserContext, LaunchOptions, Page } from "playwright";
-import { runActions, type Action } from "./act.ts";
+import { runActions, type Action, type HoverElementHandle } from "./act.ts";
+import { renderHoverCursor } from "./hover-cursor.ts";
 import { inspectElement, type ElementRecord, type InspectOptions } from "./inspect.ts";
 import { assertLanding } from "./landing.ts";
 
@@ -195,10 +196,11 @@ export async function preparePage(page: Page, o: CaptureOptions): Promise<void> 
   );
 }
 
-async function playActions(page: Page, o: CaptureOptions): Promise<void> {
+async function playActions(page: Page, o: CaptureOptions): Promise<HoverElementHandle | null> {
   if (o.actions != null) {
-    await runActions(page, o.actions, NAVIGATION_TIMEOUT_MS, o.verbose === true ? (message) => process.stderr.write(`browsershot: ${message}\n`) : undefined);
+    return runActions(page, o.actions, NAVIGATION_TIMEOUT_MS, o.verbose === true ? (message) => process.stderr.write(`browsershot: ${message}\n`) : undefined);
   }
+  return null;
 }
 
 export async function capture(o: CaptureOptions, deps: CaptureDeps = defaultCaptureDeps): Promise<CaptureResult> {
@@ -218,9 +220,12 @@ export async function capture(o: CaptureOptions, deps: CaptureDeps = defaultCapt
       });
     }
     await preparePage(page, o);
-    await playActions(page, o);
+    const hoverTarget = await playActions(page, o);
     if (o.inspect != null) {
       inspected = await inspectElement(page, o.inspect, o.inspectFooter);
+    }
+    if (hoverTarget != null) {
+      await renderHoverCursor(page, hoverTarget, o.fullPage);
     }
     o.log?.("capturing…");
     png = await page.screenshot({ fullPage: o.fullPage });

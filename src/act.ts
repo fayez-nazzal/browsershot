@@ -1,4 +1,4 @@
-import type { Page } from "playwright";
+import type { ElementHandle, Page } from "playwright";
 
 /**
  * A short list of steps browsershot runs on the page before it shoots.
@@ -14,6 +14,8 @@ export interface Action {
   kind: ActionKind;
   value: string;
 }
+
+export type HoverElementHandle = ElementHandle<HTMLElement | SVGElement>;
 
 const KINDS: ActionKind[] = ["focus", "click", "hover", "press", "type", "wait"];
 const STEP_SEPARATOR = ";";
@@ -47,8 +49,9 @@ export function parseActions(raw: string): Action[] {
   return actions;
 }
 
-export async function runActions(page: Page, actions: Action[], timeoutMs: number, onStep?: (message: string) => void): Promise<void> {
-  for (const action of actions) {
+export async function runActions(page: Page, actions: Action[], timeoutMs: number, onStep?: (message: string) => void): Promise<HoverElementHandle | null> {
+  let finalHoverTarget: HoverElementHandle | null = null;
+  for (const [index, action] of actions.entries()) {
     onStep?.(`act: ${action.kind}:${action.value}`);
     if ("wait" === action.kind) {
       await page.waitForTimeout(Number(action.value));
@@ -69,10 +72,14 @@ export async function runActions(page: Page, actions: Action[], timeoutMs: numbe
     if ("focus" === action.kind) {
       await target.evaluate((node) => (node as HTMLElement).focus());
     } else if ("hover" === action.kind) {
+      if (index === actions.length - 1) {
+        finalHoverTarget = await target.elementHandle({ timeout: timeoutMs });
+      }
       await target.hover({ timeout: timeoutMs });
     } else {
       await target.click({ timeout: timeoutMs });
     }
     await page.waitForTimeout(DEFAULT_STEP_SETTLE_MS);
   }
+  return finalHoverTarget;
 }

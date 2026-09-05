@@ -19,12 +19,17 @@ browsershot config set baseUrl https://example.com
 browsershot /pricing --expect-element '#header' --json
 ```
 
-Use `--act` for clicks, typing, key presses, or waits, and `--inspect` for evidence after those actions:
+Use `--act` for clicks, typing, key presses, waits, or hover states, and `--inspect` for evidence after those actions:
 
 ```sh
 browsershot /dashboard --act 'click:#menu' \
   --inspect '#menu' --inspect-attr aria-expanded --json
 ```
+
+When `hover:<selector>` is the final action, the capture adds a cursor SVG
+centered on the hovered element's bottom edge. Hovered links also show a
+black-and-white URL preview centered directly below the cursor; the preview
+is ellipsized for long URLs and stays within the capture bounds.
 
 Complete URLs do not require `.browsershot/config.json`. Quick paths require a known saved `baseUrl`; do not guess it. The legacy saved key `url` is accepted. Saved auth, assertions, output, JSON, and viewer settings can be overridden for one run with `--no-auth`, `--no-expect`, `--output`, `--no-json`, or `--no-auto-open`.
 

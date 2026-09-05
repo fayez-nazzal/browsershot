@@ -134,6 +134,123 @@ test("an invalid hover target returns a useful non-zero failure", () => {
   expect(proc.stderr.toString()).toMatch(/hover|selector|locator/i);
 });
 
+test("a rendered cursor appears only when hover is the final action", () => {
+  const dir = scratch();
+  const html = join(dir, "hover-cursor.html");
+  writeFileSync(
+    html,
+    `<!doctype html>
+<html>
+  <body style="margin:0;background:#f4f5f7;">
+    <button id="target" style="margin:100px;width:220px;height:80px;cursor:pointer;border:0;border-radius:16px;background:#20242b;color:white;">Premium hover</button>
+    <style>
+      #target:hover { background: #394150; }
+      svg { display: none !important; }
+      svg * { fill: red !important; stroke: red !important; }
+    </style>
+  </body>
+</html>`,
+  );
+
+  const finalHover = Bun.spawnSync(
+    ["bun", CLI, `file://${html}`, "--allow-blank", "--act", "hover:#target", "--output", join(dir, "final-hover.png"), "--json"],
+    { cwd: dir },
+  );
+  const followedByWait = Bun.spawnSync(
+    ["bun", CLI, `file://${html}`, "--allow-blank", "--act", "hover:#target;wait:1", "--output", join(dir, "hover-then-wait.png"), "--json"],
+    { cwd: dir },
+  );
+
+  expect(finalHover.exitCode).toBe(0);
+  expect(followedByWait.exitCode).toBe(0);
+  expect(JSON.parse(finalHover.stdout.toString()).sha256).not.toBe(JSON.parse(followedByWait.stdout.toString()).sha256);
+});
+
+test("hover cursor survives a handler changing the target selector", () => {
+  const dir = scratch();
+  const html = join(dir, "hover-selector-change.html");
+  writeFileSync(
+    html,
+    `<!doctype html><html><body><button id="target" style="margin:80px;width:180px;height:80px;cursor:pointer;">Hover</button><script>document.querySelector("#target").addEventListener("mouseenter", event => { event.currentTarget.id = "changed"; });</script></body></html>`,
+  );
+
+  const finalHover = Bun.spawnSync(
+    ["bun", CLI, `file://${html}`, "--allow-blank", "--act", "hover:#target", "--output", join(dir, "changed-final.png"), "--json"],
+    { cwd: dir },
+  );
+  const followedByWait = Bun.spawnSync(
+    ["bun", CLI, `file://${html}`, "--allow-blank", "--act", "hover:#target;wait:1", "--output", join(dir, "changed-wait.png"), "--json"],
+    { cwd: dir },
+  );
+
+  expect(finalHover.exitCode).toBe(0);
+  expect(followedByWait.exitCode).toBe(0);
+  expect(JSON.parse(finalHover.stdout.toString()).sha256).not.toBe(JSON.parse(followedByWait.stdout.toString()).sha256);
+});
+
+test("cursor none does not add a hover cursor to the capture", () => {
+  const dir = scratch();
+  const html = join(dir, "hover-cursor-none.html");
+  writeFileSync(
+    html,
+    `<!doctype html><html><body><div id="target" style="margin:80px;width:180px;height:80px;cursor:none;background:#4968db;">No cursor</div></body></html>`,
+  );
+
+  const finalHover = Bun.spawnSync(
+    ["bun", CLI, `file://${html}`, "--allow-blank", "--act", "hover:#target", "--output", join(dir, "none-hover.png"), "--json"],
+    { cwd: dir },
+  );
+  const followedByWait = Bun.spawnSync(
+    ["bun", CLI, `file://${html}`, "--allow-blank", "--act", "hover:#target;wait:1", "--output", join(dir, "none-wait.png"), "--json"],
+    { cwd: dir },
+  );
+
+  expect(finalHover.exitCode).toBe(0);
+  expect(followedByWait.exitCode).toBe(0);
+  expect(JSON.parse(finalHover.stdout.toString()).sha256).toBe(JSON.parse(followedByWait.stdout.toString()).sha256);
+});
+
+test("hovered links receive a readable URL preview", () => {
+  const dir = scratch();
+  const html = join(dir, "hover-link-preview.html");
+  writeFileSync(
+    html,
+    `<!doctype html><html><body style="margin:120px;"><a id="target" href="/products/very-long-preview-path?campaign=summer&variant=premium" style="font:600 20px sans-serif;cursor:pointer;">Open product</a></body></html>`,
+  );
+
+  const finalHover = Bun.spawnSync(
+    ["bun", CLI, `file://${html}`, "--allow-blank", "--act", "hover:#target", "--output", join(dir, "link-final.png"), "--json"],
+    { cwd: dir },
+  );
+  const followedByWait = Bun.spawnSync(
+    ["bun", CLI, `file://${html}`, "--allow-blank", "--act", "hover:#target;wait:1", "--output", join(dir, "link-wait.png"), "--json"],
+    { cwd: dir },
+  );
+
+  expect(finalHover.exitCode).toBe(0);
+  expect(followedByWait.exitCode).toBe(0);
+  expect(JSON.parse(finalHover.stdout.toString()).sha256).not.toBe(JSON.parse(followedByWait.stdout.toString()).sha256);
+});
+
+test("hovered links keep their URL preview when the CSS cursor is none", () => {
+  const dir = scratch();
+  const html = join(dir, "hover-link-none.html");
+  writeFileSync(html, `<!doctype html><html><body style="margin:120px;"><a id="target" href="/hidden-cursor" style="cursor:none;font:600 20px sans-serif;">Hidden cursor link</a></body></html>`);
+
+  const finalHover = Bun.spawnSync(
+    ["bun", CLI, `file://${html}`, "--allow-blank", "--act", "hover:#target", "--output", join(dir, "link-none-final.png"), "--json"],
+    { cwd: dir },
+  );
+  const followedByWait = Bun.spawnSync(
+    ["bun", CLI, `file://${html}`, "--allow-blank", "--act", "hover:#target;wait:1", "--output", join(dir, "link-none-wait.png"), "--json"],
+    { cwd: dir },
+  );
+
+  expect(finalHover.exitCode).toBe(0);
+  expect(followedByWait.exitCode).toBe(0);
+  expect(JSON.parse(finalHover.stdout.toString()).sha256).not.toBe(JSON.parse(followedByWait.stdout.toString()).sha256);
+});
+
 test("bare --publish resolves the saved publish profile key", () => {
   const dir = scratch();
   const html = join(dir, "sample.html");
