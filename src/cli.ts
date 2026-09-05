@@ -2,18 +2,12 @@
 
 import { parseArgs } from "node:util";
 import packageJson from "../package.json";
-import { mkdirSync, statSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
-import { createHash } from "node:crypto";
-import { capture, isAuthenticationCaptureFailure, type CaptureOptions, type CaptureResult } from "./capture.ts";
-import { drawAnnotations } from "./annotate.ts";
-import { publish, labelFromPath, DEFAULT_EMBED_WIDTH } from "./publish.ts";
-import { EXIT_FAILED, EXIT_OK, EXIT_USAGE, EXIT_WRITE_ERROR, publishFailure, type ExitCode } from "./exit-codes.ts";
-import { resolveAuthJar, AuthStateFailure, discoverAuthCredentials } from "./authstate.ts";
+import { DEFAULT_EMBED_WIDTH } from "./publish.ts";
+import { ExitError, EXIT_FAILED, EXIT_OK, EXIT_USAGE, type ExitCode } from "./exit-codes.ts";
 import { profilePaths, readProfile, setProfileValue, unsetProfileValue } from "./profile.ts";
-import { openFile } from "./open.ts";
-import { createRunTmpDir, ensureWorkspace, removeRunTmpDir } from "./workspace.ts";
+import { ensureWorkspace } from "./workspace.ts";
 import { resolveRunOptions } from "./run-options.ts";
+import { runCapture } from "./run-capture.ts";
 
 export { timestamp } from "./output-path.ts";
 export {
@@ -22,6 +16,14 @@ export {
   resolveCaptureUrl,
   resolvePublishDestination as resolvePublishDest,
 } from "./run-options.ts";
+export {
+  captureWithAuthRetry,
+  emptySuccess,
+  inspectJsonPath,
+  inspectSummary,
+  sha256Hex,
+} from "./run-capture.ts";
+export type { SuccessSummary } from "./run-capture.ts";
 
 export const VERSION = `${packageJson.version}-alpha`;
 
@@ -198,69 +200,6 @@ export function parseCliArgs(argv: string[]) {
 
 function parse() { return parseCliArgs(process.argv.slice(2)); }
 
-export function sha256Hex(bytes: Uint8Array): string {
-  return createHash("sha256").update(bytes).digest("hex");
-}
-
-export interface SuccessSummary {
-  outputPath: string | null;
-  bytes: number | null;
-  sha256: string | null;
-  inspectJsonPath: string | null;
-  inspected: unknown;
-  publishedUrl: string | null;
-}
-
-export interface AuthCaptureRetryDeps {
-  capture: (options: CaptureOptions) => Promise<CaptureResult>;
-  resolveAuthJar: typeof resolveAuthJar;
-}
-
-export async function captureWithAuthRetry(
-  options: CaptureOptions,
-  auth: { credentialsPath: string; user?: string } | null,
-  deps: AuthCaptureRetryDeps = { capture, resolveAuthJar },
-  onAuthStateStderr?: (chunk: string) => void,
-): Promise<CaptureResult> {
-  try {
-    return await deps.capture(options);
-  } catch (initialError) {
-    if (auth == null || !isAuthenticationCaptureFailure(initialError)) {
-      throw initialError;
-    }
-    const initialMessage = (initialError as Error).message;
-    process.stderr.write("browsershot: authentication appears invalid; verifying session and retrying once\n");
-    let verifiedJar: string;
-    try {
-      verifiedJar = await deps.resolveAuthJar({ ...auth, verify: true }, undefined, onAuthStateStderr);
-    } catch (verificationError) {
-      if (verificationError instanceof AuthStateFailure) {
-        throw new AuthStateFailure(
-          `authentication retry failed after ${initialMessage}: ${verificationError.message}`,
-          verificationError.code,
-        );
-      }
-      throw new Error(`authentication retry failed after ${initialMessage}: ${(verificationError as Error).message}`);
-    }
-    try {
-      return await deps.capture({ ...options, cookiesPath: verifiedJar });
-    } catch (retryError) {
-      throw new Error(`authentication retry failed after ${initialMessage}: ${(retryError as Error).message}`);
-    }
-  }
-}
-
-export function emptySuccess(): SuccessSummary {
-  return {
-    outputPath: null,
-    bytes: null,
-    sha256: null,
-    inspectJsonPath: null,
-    inspected: null,
-    publishedUrl: null,
-  };
-}
-
 export function normalizeArgv(argv: string[]): string[] {
   const result: string[] = [];
   let index = 0;
@@ -281,30 +220,6 @@ export function normalizeArgv(argv: string[]): string[] {
     }
   }
   return result;
-}
-
-export function inspectJsonPath(pngPath: string): string {
-  let result = `${pngPath}.json`;
-  if (pngPath.toLowerCase().endsWith(".png")) {
-    result = `${pngPath.slice(0, -4)}.json`;
-  }
-  return result;
-}
-
-export function inspectSummary(record: { role: string; name: string; attributes: Record<string, string> }, attr?: string): string {
-  let name = record.name;
-  if (name === "") {
-    name = "(empty)";
-  }
-  let summary = `role=${record.role} name="${name}"`;
-  if (attr != null) {
-    let value = record.attributes[attr];
-    if (value === undefined) {
-      value = "(not present)";
-    }
-    summary = `${summary} ${attr}=${value}`;
-  }
-  return summary;
 }
 
 function fail(msg: string, code: ExitCode = EXIT_USAGE): never {
@@ -365,8 +280,6 @@ async function main() {
     if (positionals[0] === "config") {
       runConfigCommand(positionals.slice(1));
     }
-    const runTmp = createRunTmpDir();
-    process.on("exit", () => removeRunTmpDir(runTmp));
     let profile: ReturnType<typeof readProfile> = {};
     try {
       profile = readProfile();
@@ -390,112 +303,16 @@ async function main() {
         cwd,
       });
     } catch (e) { fail((e as Error).message); }
-    const json = runOptions.report.json;
-    const out = runOptions.outputPath;
-    let jarPath: string | undefined;
-    let authCredentialsPath: string | null = null;
-    if (runOptions.auth.requested) {
-      try {
-        let credentialsPath = runOptions.auth.credentialsPath;
-        if (credentialsPath == null) {
-          credentialsPath = discoverAuthCredentials(runOptions.cwd);
-          process.stderr.write(`browsershot: using ${credentialsPath}\n`);
-        }
-        authCredentialsPath = credentialsPath;
-        const user = runOptions.auth.user;
-        jarPath = await resolveAuthJar(
-          { credentialsPath: credentialsPath as string, user: user as string | undefined },
-          undefined,
-          (chunk) => process.stderr.write(chunk),
-        );
-      } catch (e) {
-        if (e instanceof AuthStateFailure) {
-          fail(e.message, e.code);
-        }
-        fail((e as Error).message, EXIT_FAILED);
-      }
-    }
-    const options: CaptureOptions = {
-      ...runOptions.capture,
-      cookiesPath: jarPath,
-      log: (message: string) => process.stderr.write(`browsershot: ${message}\n`),
-    };
-
-    const success = emptySuccess();
-
-    let png: Uint8Array = new Uint8Array();
-    let inspected = null;
     try {
-      const result = await captureWithAuthRetry(
-        options,
-        runOptions.auth.requested && authCredentialsPath != null
-          ? { credentialsPath: authCredentialsPath, user: runOptions.auth.user }
-          : null,
-        undefined,
-        (chunk) => process.stderr.write(chunk),
-      );
-      png = result.png;
-      inspected = result.inspected;
+      await runCapture(runOptions, {
+        stdout: (text) => process.stdout.write(text),
+        stderr: (text) => process.stderr.write(text),
+      });
     } catch (e) {
-      if (e instanceof AuthStateFailure) {
+      if (e instanceof ExitError) {
         fail(e.message, e.code);
       }
       fail((e as Error).message, EXIT_FAILED);
-    }
-    try {
-      png = drawAnnotations(png, runOptions.annotations.boxes, runOptions.annotations.markers, runTmp);
-    } catch (e) {
-      fail((e as Error).message);
-    }
-    mkdirSync(dirname(out), { recursive: true });
-    writeFileSync(out, png);
-    success.outputPath = out;
-    success.bytes = png.length;
-    success.sha256 = sha256Hex(png);
-    process.stderr.write(`browsershot: wrote ${out} (${png.length} bytes)\n`);
-    process.stderr.write(`browsershot: sha256 ${success.sha256}\n`);
-    if (!json) {
-      process.stdout.write(`${out}\n`);
-    }
-    if (inspected != null) {
-      let jsonOut = inspectJsonPath(out);
-      if (runOptions.inspectJsonPath != null) {
-        jsonOut = runOptions.inspectJsonPath;
-      }
-      try {
-        mkdirSync(dirname(jsonOut), { recursive: true });
-        writeFileSync(jsonOut, `${JSON.stringify(inspected, null, 2)}\n`);
-      } catch (e) {
-        fail(`wrote ${out}, but could not write ${jsonOut}: ${(e as Error).message}`, EXIT_WRITE_ERROR);
-      }
-      success.inspectJsonPath = jsonOut;
-      success.inspected = inspected;
-      process.stderr.write(`browsershot: inspected ${inspectSummary(inspected, runOptions.capture.inspect?.attr)}\n`);
-      process.stderr.write(`browsershot: element json ${jsonOut}\n`);
-    }
-    if (runOptions.publish != null) {
-      const pngLabel = runOptions.publish.label ?? labelFromPath(out);
-      try {
-        const published = publish({
-          filePath: out,
-          dest: runOptions.publish.destination,
-          size: runOptions.publish.size,
-          label: pngLabel,
-        });
-        success.publishedUrl = published.url;
-        if (!json) {
-          process.stdout.write(`${published.markdown}\n`);
-        }
-      } catch (e) {
-        const failure = publishFailure(out, e as Error);
-        fail(failure.message, failure.code);
-      }
-    }
-    if (json) {
-      process.stdout.write(`${JSON.stringify(success)}\n`);
-    }
-    if (runOptions.report.autoOpen) {
-      openFile(out, (message) => process.stderr.write(`browsershot: warning: ${message}\n`));
     }
   }
 }

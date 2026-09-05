@@ -1,4 +1,4 @@
-import { EXIT_ENVIRONMENT, EXIT_FAILED, type ExitCode } from "./exit-codes.ts";
+import { ExitError, EXIT_ENVIRONMENT, EXIT_FAILED, type ExitCode } from "./exit-codes.ts";
 import { discoverCredentialsFile } from "./credentials-discovery.ts";
 
 export interface AuthStateRun {
@@ -18,13 +18,10 @@ export interface AuthJarRequest {
   verify?: boolean;
 }
 
-export class AuthStateFailure extends Error {
-  readonly code: ExitCode;
-
+export class AuthStateFailure extends ExitError {
   constructor(message: string, code: ExitCode) {
-    super(message);
+    super(message, code);
     this.name = "AuthStateFailure";
-    this.code = code;
   }
 }
 

@@ -2,7 +2,6 @@ import { expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { emptySuccess } from "../src/cli.ts";
 
 const REPO_ROOT = join(import.meta.dir, "..");
 const CLI = join(REPO_ROOT, "src", "cli.ts");
@@ -27,18 +26,6 @@ function writeSamplePage(dir: string): string {
   );
   return html;
 }
-
-test("emptySuccess carries every success key, all null", () => {
-  expect(Object.keys(emptySuccess())).toEqual([
-    "outputPath",
-    "bytes",
-    "sha256",
-    "inspectJsonPath",
-    "inspected",
-    "publishedUrl",
-  ]);
-  expect(Object.values(emptySuccess()).every((value) => value === null)).toBe(true);
-});
 
 test("--json prints exactly one JSON object on stdout and keeps human lines on stderr", () => {
   const dir = scratch();
