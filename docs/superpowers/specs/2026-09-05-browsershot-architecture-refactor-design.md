@@ -23,7 +23,8 @@ exposing raw query values, and make the behavioral contracts explicit in tests.
 - Preserve the recently added output templates, `--group`, and `--label`,
   including their precedence and conflict behavior.
 - Do not add a runtime dependency, generic command framework, service container,
-  plugin system, or class hierarchy.
+  plugin system, or domain class hierarchy. The small typed exit-error
+  inheritance described below is the only new class structure.
 - Keep Playwright behavior, authstate, publishing, inspection, annotations, and
   workspace mechanics in their existing domain modules unless orchestration
   extraction requires a narrow interface change.
