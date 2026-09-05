@@ -8,14 +8,14 @@ import type { Page } from "playwright";
  * steps declarative and tiny so the shot stays reproducible from the command line alone.
  */
 
-export type ActionKind = "focus" | "click" | "press" | "type" | "wait";
+export type ActionKind = "focus" | "click" | "hover" | "press" | "type" | "wait";
 
 export interface Action {
   kind: ActionKind;
   value: string;
 }
 
-const KINDS: ActionKind[] = ["focus", "click", "press", "type", "wait"];
+const KINDS: ActionKind[] = ["focus", "click", "hover", "press", "type", "wait"];
 const STEP_SEPARATOR = ";";
 const DEFAULT_STEP_SETTLE_MS = 400;
 
@@ -68,6 +68,8 @@ export async function runActions(page: Page, actions: Action[], timeoutMs: numbe
     await target.waitFor({ state: "attached", timeout: timeoutMs });
     if ("focus" === action.kind) {
       await target.evaluate((node) => (node as HTMLElement).focus());
+    } else if ("hover" === action.kind) {
+      await target.hover({ timeout: timeoutMs });
     } else {
       await target.click({ timeout: timeoutMs });
     }

@@ -91,7 +91,7 @@ INTERACTION AND INSPECTION
                         exist after an interaction can be shot: an open menu, a
                         focused control, a selected row. Steps are separated by
                         ; and each is kind:value, where kind is focus, click,
-                        press, type or wait (milliseconds). Selectors are CSS.
+                        hover, press, type or wait (milliseconds). Selectors are CSS.
                         Example:
                         --act 'focus:button[aria-label="More actions"];press:Enter'
                         Runs after the page has rendered and before --inspect,
@@ -103,8 +103,8 @@ INTERACTION AND INSPECTION
                         that pixel coordinate; repeatable
 
   Actions run after readiness and before inspection. Steps are separated by ;
-  and use focus, click, press, type or wait. Selectors are CSS.
-  Example: --act 'click:#menu;wait:250'
+  and use focus, click, hover, press, type or wait. Selectors are CSS.
+  Example: --act 'hover:button#menu;click:button#menu;wait:250'
 
 PUBLISH
       --publish [dest]      Upload with rclone and print a public embed

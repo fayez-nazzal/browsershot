@@ -19,6 +19,7 @@ test("help explains both capture entry paths and exposes every capture flag", ()
     "--no-json",
     "--no-auto-open",
     "--act",
+    "hover",
     "--inspect",
     "--inspect-attr",
     "--inspect-json",

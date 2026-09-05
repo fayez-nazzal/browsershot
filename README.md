@@ -141,8 +141,18 @@ browsershot /settings \
   --json
 ```
 
-Supported steps are `focus`, `click`, `press`, `type`, and `wait` in
-milliseconds. `--inspect <selector>` records the first matching element and
+Supported steps are `focus`, `click`, `hover`, `press`, `type`, and `wait` in
+milliseconds. Hover uses Playwright's locator hover behavior, so hover states
+are applied before inspection and screenshot capture. For example:
+
+```sh
+browsershot /dashboard \
+  --act 'hover:button#menu' \
+  --inspect '#menu' \
+  --json
+```
+
+`--inspect <selector>` records the first matching element and
 draws its markup, role, name, and state over the capture. `--inspect-json <path>`
 chooses the sidecar path; otherwise it sits beside the PNG. `--inspect-note`
 adds a note to the panel.

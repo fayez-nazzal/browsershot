@@ -80,6 +80,60 @@ test("bare --publish without a saved destination exits 2 before capturing", () =
   expect(existsSync(out)).toBe(false);
 });
 
+test("hover runs before inspection and screenshot capture, and actions preserve order", () => {
+  const dir = scratch();
+  const html = join(dir, "hover.html");
+  const output = join(dir, "hover.png");
+  const inspectOutput = join(dir, "hover.json");
+  writeFileSync(
+    html,
+    `<!doctype html>
+<html>
+  <body>
+    <button id="menu" style="width: 180px; height: 60px;">Closed</button>
+    <script>
+      const menu = document.querySelector("#menu");
+      menu.addEventListener("mouseover", () => {
+        menu.dataset.hovered = "true";
+        menu.textContent = "Hovered";
+      });
+      menu.addEventListener("click", () => {
+        if (menu.dataset.hovered === "true") menu.dataset.clicked = "true";
+      });
+    </script>
+  </body>
+</html>`,
+  );
+
+  const proc = Bun.spawnSync(
+    ["bun", CLI, `file://${html}`, "--allow-blank", "--act", "hover:button#menu;click:button#menu", "--inspect", "#menu", "--inspect-json", inspectOutput, "--output", output, "--json"],
+    { cwd: dir },
+  );
+
+  expect(proc.exitCode).toBe(0);
+  expect(existsSync(output)).toBe(true);
+  const result = JSON.parse(proc.stdout.toString());
+  const inspected = JSON.parse(readFileSync(inspectOutput, "utf8"));
+  expect(result.outputPath).toBe(output);
+  expect(inspected.attributes["data-hovered"]).toBe("true");
+  expect(inspected.attributes["data-clicked"]).toBe("true");
+  expect(inspected.displayHTML).toContain("Hovered");
+});
+
+test("an invalid hover target returns a useful non-zero failure", () => {
+  const dir = scratch();
+  const html = join(dir, "hover-missing.html");
+  writeFileSync(html, "<!doctype html><html><body><p>Rendered page</p></body></html>");
+
+  const proc = Bun.spawnSync(
+    ["bun", CLI, `file://${html}`, "--allow-blank", "--act", "hover:[", "--output", join(dir, "missing.png")],
+    { cwd: dir },
+  );
+
+  expect(proc.exitCode).toBe(1);
+  expect(proc.stderr.toString()).toMatch(/hover|selector|locator/i);
+});
+
 test("bare --publish resolves the saved publish profile key", () => {
   const dir = scratch();
   const html = join(dir, "sample.html");
