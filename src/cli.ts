@@ -49,6 +49,7 @@ CAPTURE
   The fingerprint identifies a capture, it does not encrypt it; use --label for
   a readable state. The default name adds _q-{query} only when a query exists.
       --size <WxH>          Viewport size (default: 1440x900)
+      --delay <ms>          Extra wait after load before capture (default: 0)
       --element <selector>  Capture only the first matching visible element
       --no-element          Disable a saved element selector for this run
       --full-page           Capture the whole scrollable page
