@@ -93,7 +93,7 @@ test("element capture screenshots the first visible matching element", async () 
   const { launchBrowser } = scriptedLauncher(fakeBrowser(elementPage(events)), []);
   const result = await capture({ ...BASE_OPTIONS, element: "#card" }, { launchBrowser });
   expect(result.png).toEqual(new Uint8Array([1, 2]));
-  expect(events).toEqual(["locator:css=#card", "waitFor", "elementScreenshot"]);
+  expect(events).toEqual(["locator:css=#card:visible", "waitFor", "elementScreenshot"]);
 });
 
 test("page failures do not trigger a second capture", async () => {

@@ -208,7 +208,7 @@ async function captureScreenshot(page: Page, o: CaptureOptions): Promise<Uint8Ar
     return page.screenshot({ fullPage: o.fullPage });
   }
   try {
-    const element = page.locator(`css=${o.element}`).first();
+    const element = page.locator(`css=${o.element}:visible`).first();
     await element.waitFor({ state: "visible", timeout: ELEMENT_READY_TIMEOUT_MS });
     return element.screenshot();
   } catch (error) {
