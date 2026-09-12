@@ -23,6 +23,19 @@ function fakePage(gotoError?: Error) {
   };
 }
 
+function elementPage(events: string[]) {
+  const locator = {
+    first: () => locator,
+    waitFor: async () => { events.push("waitFor"); },
+    screenshot: async () => { events.push("elementScreenshot"); return new Uint8Array([1, 2]); },
+  };
+  return {
+    ...fakePage(),
+    locator: (selector: string) => { events.push(`locator:${selector}`); return locator; },
+    screenshot: async () => { events.push("pageScreenshot"); return new Uint8Array([3]); },
+  };
+}
+
 function fakeBrowser(page: unknown): Browser {
   return {
     newContext: async () => ({
@@ -73,6 +86,14 @@ test("a failed launch surfaces the install hint", async () => {
   expect(message).toContain("bun playwright install chromium");
   expect(message).toContain("/fake/headless-shell");
   expect(calls.length).toBe(1);
+});
+
+test("element capture screenshots the first visible matching element", async () => {
+  const events: string[] = [];
+  const { launchBrowser } = scriptedLauncher(fakeBrowser(elementPage(events)), []);
+  const result = await capture({ ...BASE_OPTIONS, element: "#card" }, { launchBrowser });
+  expect(result.png).toEqual(new Uint8Array([1, 2]));
+  expect(events).toEqual(["locator:css=#card:visible", "waitFor", "elementScreenshot"]);
 });
 
 test("page failures do not trigger a second capture", async () => {

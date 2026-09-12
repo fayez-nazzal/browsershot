@@ -7,6 +7,7 @@ export interface ProfileConfig {
   authRedirect?: string;
   expectElement?: string;
   expectText?: string;
+  element?: string;
   output?: string;
   group?: string;
   label?: string;
@@ -45,6 +46,7 @@ export const PROFILE_SETTINGS: { [Name in ProfileSettingName]-?: ProfileSettingD
   authRedirect: { kind: "string", aliases: ["auth-redirect"] },
   expectElement: { kind: "string", aliases: ["expect-element"] },
   expectText: { kind: "string", aliases: ["expect-text"] },
+  element: { kind: "string" },
   output: { kind: "string", validate: (value) => { expandOutputTemplate(value, TEMPLATE_EXAMPLE); } },
   group: { kind: "string", validate: (value) => { validateOutputGroup(value, TEMPLATE_EXAMPLE); } },
   label: { kind: "string", validate: (value) => { validateOutputLabel(value, TEMPLATE_EXAMPLE); } },

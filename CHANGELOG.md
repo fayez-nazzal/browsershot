@@ -14,6 +14,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Capture defaults are hardcoded: viewport 1440x900 at 2x, wait event `load`, navigation timeout 30s.
 
 ### Added
+- Element-only screenshots via `--element` and the saved `element` setting,
+  with `--no-element` for one-run overrides.
 
 - The `publish` profile key and bare `--publish`, which resolves the saved rclone destination. An explicit `--publish <dest>` value overrides it.
 

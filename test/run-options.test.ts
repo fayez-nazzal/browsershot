@@ -43,20 +43,26 @@ test("built-in defaults produce a complete execution model", () => {
 test("saved defaults and explicit replacements resolve once", () => {
   const profile = {
     baseUrl: "https://example.com/app", authUser: "member", authRedirect: "/login",
-    expectText: "Header", expectElement: "#header", json: true, autoOpen: true,
+    expectText: "Header", expectElement: "#header", element: "#card", json: true, autoOpen: true,
     output: "saved.png", publish: "gdrive:saved/",
   };
   const result = resolve("/pricing", {
-    "expect-element": "#ready", "auth-credentials": "/tmp/creds.yaml",
+    "expect-element": "#ready", element: "#featured", "auth-credentials": "/tmp/creds.yaml",
     output: "explicit.png", publish: "gdrive:explicit/", "publish-size": "1200",
   }, profile);
   expect(result.capture).toMatchObject({
-    url: "https://example.com/app/pricing", expectElement: "#ready", expectText: undefined,
+    url: "https://example.com/app/pricing", expectElement: "#ready", expectText: undefined, element: "#featured",
   });
   expect(result.auth).toEqual({ requested: true, credentialsPath: "/tmp/creds.yaml", user: "member" });
   expect(result.outputPath).toBe("/repo/explicit.png");
   expect(result.publish).toEqual({ destination: "gdrive:explicit/", size: 1200, label: undefined });
   expect(result.report).toEqual({ json: true, autoOpen: true });
+});
+
+test("no-element disables saved capture and element conflicts are usage errors", () => {
+  expect(resolve("https://example.com", { "no-element": true }, { element: "#card" }).capture.element).toBeUndefined();
+  expect(() => resolve("https://example.com", { element: "#card", "no-element": true })).toThrow(UsageError);
+  expect(() => resolve("https://example.com", { "full-page": true }, { element: "#card" })).toThrow(/--element.*--full-page/);
 });
 
 test("negative flags disable saved state and conflict with explicit positives", () => {

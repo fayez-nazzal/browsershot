@@ -50,6 +50,8 @@ CAPTURE
   a readable state. The default name adds _q-{query} only when a query exists.
       --size <WxH>          Viewport size (default: 1440x900)
       --delay <ms>          Extra wait after load before capture (default: 0)
+      --element <selector>  Capture only the first matching visible element
+      --no-element          Disable a saved element selector for this run
       --full-page           Capture the whole scrollable page
       --auto-open           Open the written capture with the platform viewer
       --no-auto-open        Disable a saved autoOpen setting for this run
@@ -136,11 +138,11 @@ OUTPUT AND ERRORS
   Exit 5  PNG written but publishing failed
 
 CONFIGURATION
-  Canonical saved names: baseUrl, authUser, expectElement, expectText, output,
-  group, label, json, autoOpen and publish. Kebab-case aliases are accepted for
-  config set and unset, including base-url, auth-user, expect-element,
-  expect-text and auto-open. Reads never rewrite the config file and never
-  create the workspace.
+  Canonical saved names: baseUrl, authUser, authRedirect, expectElement,
+  expectText, element, output, group, label, json, autoOpen and publish.
+  Kebab-case aliases are accepted for set and unset, including base-url,
+  url, auth-user, expect-element, expect-text and auto-open. Reads never
+  rewrite the config file and never create the workspace.
 
 META
       --verbose         Playwright progress detail on stderr: phase timings,
@@ -157,6 +159,8 @@ export function parseCliArgs(argv: string[]) {
       group: { type: "string" },
       label: { type: "string" },
       size: { type: "string" },
+      element: { type: "string" },
+      "no-element": { type: "boolean", default: false },
       "full-page": { type: "boolean", default: false },
       auth: { type: "boolean", default: false },
       "auth-user": { type: "string" },
