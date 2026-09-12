@@ -33,6 +33,9 @@ Use flags when a capture needs more than a simple route:
 - `--inspect` checks an element and writes a JSON sidecar. Use
   `--inspect-attr` to check a specific attribute, such as `aria-expanded`.
 - `--expect-text` confirms that the expected page appeared.
+- `--element` captures only the first matching visible element; `--no-element`
+  disables a saved element selector for one capture. It cannot be combined
+  with `--full-page`.
 - `--expect-element` waits for a visible CSS element before actions.
 - `--no-auth`, `--no-expect`, `--no-json`, and `--no-auto-open` disable saved
   settings for one capture.

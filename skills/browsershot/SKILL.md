@@ -19,6 +19,10 @@ browsershot config set baseUrl https://example.com
 browsershot /pricing --expect-element '#header' --json
 ```
 
+Use `--element '#card'` to capture only the first matching visible element.
+Save it with `browsershot config set element '#card'`, or use `--no-element`
+for one full-page run. Element capture cannot be combined with `--full-page`.
+
 Use `--act` for clicks, typing, key presses, waits, or hover states, and `--inspect` for evidence after those actions:
 
 ```sh

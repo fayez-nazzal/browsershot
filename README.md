@@ -90,7 +90,7 @@ browsershot config show
 ```
 
 The canonical setting names are `baseUrl`, `authUser`, `authRedirect`, `expectElement`,
-`expectText`, `output`, `group`, `label`, `json`, `autoOpen`, and `publish`.
+`expectText`, `element`, `output`, `group`, `label`, `json`, `autoOpen`, and `publish`.
 `config unset <name>`
 removes a saved setting. Config commands also accept the existing kebab-case
 aliases: `base-url`, `url`, `auth-user`, `expect-element`, `expect-text`, and
@@ -189,6 +189,18 @@ Each capture uses one browser launch and one screenshot. The page is loaded,
 checked for a disallowed HTTP status, and allowed to render. Then Browsershot
 applies an optional delay, waits for an expected element and/or text, runs
 actions, records inspection data, draws annotations, and writes the PNG.
+
+To capture only the first matching visible element, use `--element`:
+
+```sh
+browsershot /dashboard --element '#main-card' --json
+browsershot config set element '#main-card'
+```
+
+Element capture waits up to 10 seconds for the selector, scrolls the element
+into view, and writes only its bounds. Use `--no-element` to disable a saved
+selector for one run. Element capture cannot be combined with `--full-page`;
+pass `--no-element` when the whole page is required.
 
 `--expect-text <text>` is a case-sensitive check against `body.innerText`.
 `--expect-element <selector>` waits up to 10 seconds for the first matching CSS

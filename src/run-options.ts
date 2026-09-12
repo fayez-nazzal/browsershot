@@ -15,7 +15,7 @@ import { DEFAULT_EMBED_WIDTH } from "./publish.ts";
 
 export interface CaptureFlags {
   output?: string; group?: string; label?: string; size?: string;
-  "full-page"?: boolean; delay?: string; verbose?: boolean;
+  "full-page"?: boolean; element?: string; "no-element"?: boolean; delay?: string; verbose?: boolean;
   auth?: boolean; "auth-user"?: string; "auth-credentials"?: string;
   "auth-redirect"?: string; "auth-purpose"?: string;
   "no-auth"?: boolean; "no-auth-redirect"?: boolean;
@@ -80,6 +80,9 @@ function validateConflicts(flags: Readonly<CaptureFlags>): void {
   )) {
     throw new UsageError("conflict between --no-expect and positive expectation options");
   }
+  if (flags["no-element"] === true && flags.element !== undefined) {
+    throw new UsageError("conflict between --no-element and --element");
+  }
   if (flags["no-json"] === true && flags.json === true) {
     throw new UsageError("conflict between --no-json and --json");
   }
@@ -103,6 +106,7 @@ function validateRequiredTextFlags(flags: Readonly<CaptureFlags>): void {
   nonEmptyFlag("auth-redirect", flags["auth-redirect"]);
   nonEmptyFlag("expect-text", flags["expect-text"]);
   nonEmptyFlag("expect-element", flags["expect-element"]);
+  nonEmptyFlag("element", flags.element);
   nonEmptyFlag("output", flags.output);
   nonEmptyFlag("group", flags.group);
   nonEmptyFlag("label", flags.label);
@@ -259,6 +263,10 @@ export function resolveRunOptions(input: ResolveRunOptionsInput): ResolvedRunOpt
     const viewport = flags.size === undefined
       ? { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT }
       : requiredSize(flags.size);
+    const element = flags["no-element"] === true ? undefined : flags.element ?? profile.element;
+    if (element !== undefined && flags["full-page"] === true) {
+      throw new UsageError("--element cannot be combined with --full-page; pass --no-element to capture the whole page");
+    }
     const inspect = resolveInspect(flags);
 
     return {
@@ -266,6 +274,7 @@ export function resolveRunOptions(input: ResolveRunOptionsInput): ResolvedRunOpt
       capture: {
         url,
         viewport,
+        element,
         fullPage: flags["full-page"] === true,
         delayMs: flags.delay === undefined ? 0 : positiveInteger("delay", flags.delay),
         allowBlank: flags["allow-blank"] === true,

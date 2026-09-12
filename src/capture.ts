@@ -9,6 +9,7 @@ export interface CaptureOptions {
   url: string;
   viewport?: { width: number; height: number };
   fullPage: boolean;
+  element?: string;
   delayMs: number;
   cookiesPath?: string;
   authRedirect?: string;
@@ -202,6 +203,19 @@ async function playActions(page: Page, o: CaptureOptions): Promise<HoverElementH
   }
   return null;
 }
+async function captureScreenshot(page: Page, o: CaptureOptions): Promise<Uint8Array> {
+  if (o.element === undefined) {
+    return page.screenshot({ fullPage: o.fullPage });
+  }
+  try {
+    const element = page.locator(`css=${o.element}`).first();
+    await element.waitFor({ state: "visible", timeout: ELEMENT_READY_TIMEOUT_MS });
+    return element.screenshot();
+  } catch (error) {
+    throw new Error(`--element ${JSON.stringify(o.element)} failed: ${(error as Error).message}`);
+  }
+}
+
 
 export async function capture(o: CaptureOptions, deps: CaptureDeps = defaultCaptureDeps): Promise<CaptureResult> {
   const session = await openSession(o, deps);
@@ -228,7 +242,7 @@ export async function capture(o: CaptureOptions, deps: CaptureDeps = defaultCapt
       await renderHoverCursor(page, hoverTarget, o.fullPage);
     }
     o.log?.("capturing…");
-    png = await page.screenshot({ fullPage: o.fullPage });
+    png = await captureScreenshot(page, o);
   } finally {
     await closeSession(session);
   }
