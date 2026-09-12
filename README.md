@@ -1,44 +1,64 @@
 # browsershot
 
-A CLI tool that lets you take screenshot of any page in one quick command:
+Capture a web page as a PNG, from one command.
 
 ```sh
-browsershot https://example.com/pricing # Take screenshot of pricing page
+browsershot https://example.com
 ```
 
-It loads the URL, waits for the page to render, and writes a PNG path with a JSON summary.
+By default, stdout contains the absolute PNG path. Add `--json` for a structured result.
 
-## AI Agents
+- Capture whole pages or individual components.
+- Interact with a page and inspect the resulting UI state.
+- Save project defaults and produce JSON for scripts or coding agents.
 
-Browsershot works great with AI Agents, it's efficient enough to support AI Agents execute and validate efficiently, faster, with less tokens:
-- Supports project-based configurations, this way a short command does the job without needing to provide tons of flags.
-- Helps AI Agents do design work, it can take screenshots of implemented web pages and compare with design reference using vision.
-- Helps write PRs with screenshot evidence of the implemented pages.
-- Supports structured JSON output per command so AI Agents get quick summaries in its context window without having to re-check and fire many tool calls.
-- Authentication support, without you worrying about unauthenticated screenshots or expired sessions, it has built-in support for my other tool [authstate](https://github.com/fayez-nazzal/authstate).
-- For authentications, multiple testing users are supported using `.testing-credentials.yaml`, e.p: You can have a free, premium, non-onboarded user accounts, each with different testing data covering your testing views or use cases.
+[Get started](#get-started) · [Everyday captures](#everyday-captures) · [Reference](#reference) · [Development](#development)
 
-## Project-based configurations
+## Get started
 
-When a project has a stable base URL, save it once and use short routes:
+You need [Bun](https://bun.sh) and Git. This source installation uses a macOS/Linux shell:
 
 ```sh
-browsershot config set baseUrl https://example.com # Saved to .browsershot/config.json where invoked
-browsershot /pricing # Works across multiple commands
+git clone https://github.com/fayez-nazzal/browsershot.git
+cd browsershot
+bun install --frozen-lockfile
+bunx playwright install chromium
+bun run build
+export PATH="$PWD/dist:$PATH"
+browsershot https://example.com
 ```
 
-This is the same capture pipeline. The path is simply resolved against the
-saved base in the current directory. A complete URL always wins over the saved
-base and is never prefixed by it. A quick path changes only URL resolution;
-every capture option behaves the same for a quick path and a complete URL.
-Invalid saved configuration blocks both forms before capture starts.
+The export makes the compiled command available in the current terminal without installing a global package or changing another project's dependencies. In a new terminal, repeat the export from the checkout, or add the checkout's absolute `dist` directory to your shell PATH.
 
-## Make one capture prove something
+The PNG is written under `.browsershot/captures/example.com/`; its absolute path is printed on stdout. `.browsershot` is relative to the directory where the command runs. Add `--auto-open` to open the image in the platform viewer.
 
-A PNG tells you that a file was written. It does not tell you that the menu
-opened, the account loaded, or the route was the one you intended. Add a
-readiness check when the page must reach a known landing state, then inspect the
-result after any interaction:
+On Linux, use `bunx playwright install --with-deps chromium` when browser OS dependencies are needed. That command can require administrator privileges.
+
+## Everyday captures
+
+Run from the app's directory with its server already running. Replace the example port, routes, and selectors with the app's own:
+
+```sh
+browsershot config set baseUrl http://localhost:3000
+browsershot /pricing
+```
+
+Settings live in `.browsershot/config.json` in this directory. A complete URL uses itself instead of the saved base.
+
+| Task | Command |
+| --- | --- |
+| Full page | `browsershot /pricing --full-page` |
+| Narrow viewport | `browsershot /pricing --size 390x844` |
+| One component | `browsershot /dashboard --element '#main-card'` |
+| Grouped evidence | `browsershot /pricing --group PR-123 --label desktop` |
+
+`--size` changes the viewport; it does not emulate a device. `--element` and `--full-page` cannot be combined. Use `--no-element` to override a saved element selector.
+
+A grouped capture has an illustrative shape such as `.browsershot/captures/PR-123/localhost-3000/pricing_desktop_<timestamp>.png` (the timestamp is omitted here). Host and other path values are made safe, so `localhost:3000` becomes `localhost-3000`.
+
+## Capture UI state
+
+Use readiness checks before interaction and inspection after it:
 
 ```sh
 browsershot /dashboard \
@@ -49,286 +69,152 @@ browsershot /dashboard \
   --json
 ```
 
-The element check happens before actions. The click happens before inspection.
-The JSON result then carries the inspected element, including its attributes.
-For a script or an agent, this is usually the most useful form of capture.
+The order is **readiness → actions → inspection → screenshot**. `--inspect-attr` reports and highlights an attribute; it does not assert its value. A script can check `inspected.attributes["aria-expanded"] === "true"`. Inspection also creates a JSON sidecar beside the PNG.
 
-With `--json`, stdout contains exactly one object:
+For agents, use JSON and sidecar fields for programmatic checks and the screenshot for visual review. Do not put raw PNG bytes in text context. See the bundled [`AGENTS.md`](AGENTS.md) and [`skills/browsershot/SKILL.md`](skills/browsershot/SKILL.md) for operational recipes.
 
-```json
-{
-  "outputPath": "/absolute/path/shot.png",
-  "bytes": 76218,
-  "sha256": "…",
-  "inspectJsonPath": "/absolute/path/shot.json",
-  "inspected": { "attributes": { "aria-expanded": "true" } },
-  "publishedUrl": null
-}
-```
+## Reference
 
-The six fields are stable. `--inspect-attr` brings an attribute to the front of
-the report; it does not compare the value with an expectation. Assert on the
-JSON field yourself. Without `--json`, the absolute PNG path is the first line
-on stdout and human diagnostics go to stderr.
+Run `browsershot --help` for the complete flag list and `browsershot --version` for the version.
 
-Never read PNG bytes into agent context. Use `outputPath`, `bytes`, `sha256`,
-`inspected`, and the inspection sidecar as evidence.
+<details>
+<summary>Saved defaults and one-run overrides</summary>
 
-## Saved settings and one-run choices
-
-Project settings live in `.browsershot/config.json` in the current directory.
-Reading them never creates the `.browsershot/` workspace. Save only what
-should be the default for that project:
+`config set` saves project defaults; `config unset` removes a setting. Boolean settings are set without a value:
 
 ```sh
-browsershot config set baseUrl https://example.com
-browsershot config set expectElement '#app'
-browsershot config set authUser member
-browsershot config set group regression
 browsershot config set json
+browsershot config set expectElement '#app'
 browsershot config show
+browsershot config unset expectElement
+browsershot config path
 ```
 
-The canonical setting names are `baseUrl`, `authUser`, `authRedirect`, `expectElement`,
-`expectText`, `element`, `output`, `group`, `label`, `json`, `autoOpen`, and `publish`.
-`config unset <name>`
-removes a saved setting. Config commands also accept the existing kebab-case
-aliases: `base-url`, `url`, `auth-user`, `expect-element`, `expect-text`, and
-`auth-redirect`, and `auto-open`. Reads accept legacy `url` without rewriting the file; explicit
-writes use `baseUrl`.
+Canonical settings are `baseUrl`, `authUser`, `authRedirect`, `expectElement`, `expectText`, `element`, `output`, `group`, `label`, `json`, `autoOpen`, and `publish`. Accepted aliases are `base-url`, `url`, `auth-user`, `auth-redirect`, `expect-element`, `expect-text`, and `auto-open`. Legacy JSON `url` is read as `baseUrl`; reads do not rewrite or create the workspace, and explicit writes use canonical names.
 
-Saved settings are convenient, not binding. Override them for one capture:
+Flags override saved defaults. Per-run disabling flags include `--no-auth`, `--no-auth-redirect`, `--no-expect`, `--no-element`, `--no-json`, and `--no-auto-open`. Positive and negative flags for the same setting conflict. Explicit `--expect-text` or `--expect-element` replaces the entire saved expectation set; both explicit checks must pass when both are supplied. `--no-expect` disables content assertions, not HTTP or blank-page guards.
 
-```sh
-browsershot /account --auth-user admin --expect-element '#account-ready'
-browsershot /login --no-auth --no-expect
-browsershot /pricing --output /tmp/pricing.png --no-json
-```
+Routes beginning with `/` append to the saved base path, including hash routes. Invalid saved configuration blocks full URLs as well as short routes.
 
-An explicit `--expect-text` or `--expect-element` replaces the complete saved
-assertion set for that run. If both are supplied, both must pass. `--no-expect`
-turns off content assertions only; HTTP status and blank-render guards remain
-active. A positive and negative flag for the same setting is a usage error.
+</details>
 
-## Friendly capture names
+<details>
+<summary>Filenames and templates</summary>
 
-Browsershot organizes captures by site and route without any configuration:
+The default path is `.browsershot/captures/{host}/{route}_{timestamp}.png`; a query adds `_q-{query}`. `--group` inserts safe relative directories before the host, and `--label` adds one safe filename segment. Values are sanitized and shortened as needed.
 
-```text
-.browsershot/captures/example.com/pricing_2026-09-05_14-30-12.png
-.browsershot/captures/example.com/clients_q-filter-token-4e2a9c7d1130_2026-09-05_14-30-12.png
-```
+The six placeholders are `{host}`, `{route}` (or `home`), `{query}` (parameter names plus a 12-hex fingerprint, never plaintext query values), `{date}`, `{time}`, and `{timestamp}`. Dates and times are local. The fingerprint identifies rather than encrypts; use a label for readable state.
 
-The second name is an illustrative shape, not the digest of a specific
-documented URL. The default name adds the `_q-{query}` segment only when the
-URL has a query.
+Hash fragments beginning with `/` supply the logical route and query. Ordinary anchors are ignored. Unknown placeholders fail before capture, while `{{` and `}}` escape literal braces.
 
-Use `--group` to collect related captures and `--label` to describe the state
-shown in one capture:
-
-```sh
-browsershot /pricing --group PR-123 --label menu-open
-```
-
-That produces a path shaped like:
-
-```text
-.browsershot/captures/PR-123/example.com/pricing_menu-open_2026-09-05_14-30-12.png
-```
-
-Browsershot supplies the separators and `.png` extension. A group may contain
-several relative directory segments, while a label is always one safe filename
-segment. Unsafe filename characters are replaced, and unusually long values
-are shortened to fit common filesystem limits. Save either when it is useful
-across runs:
-
-```sh
-browsershot config set group 'regression/{date}'
-browsershot config set label desktop
-```
-
-The values may use these placeholders:
-
-- `{host}`: the URL host, including a port when present
-- `{route}`: the URL path as a safe slug, or `home` for `/`
-- `{query}`: sanitized parameter names plus a 12-character hexadecimal
-  fingerprint that identifies the query; query values are never written in
-  plaintext
-- `{date}`: local date such as `2026-09-05`
-- `{time}`: local time such as `14-30-12`
-- `{timestamp}`: local date and time such as `2026-09-05_14-30-12`
-
-Hash-routed applications get logical route names. When the URL fragment begins
-with `/`, `{route}` uses the pathname inside that hash route, so
-`https://example.com/app#/workspaces/8/clients` is named after
-`workspaces-8-clients`. Ordinary anchors such as `#pricing` are ignored, and
-`{route}` keeps the outer path.
-
-Query values never appear in plaintext in generated names. The fingerprint
-identifies a capture, it does not encrypt it, so a caller who wants a readable
-state should use `--label`. Custom `--output`, `--group`, and `--label`
-templates can use `{query}`; it has no implicit separator, so you control its
-placement. Unknown placeholders fail before capture, which makes spelling
-mistakes visible. Write `{{` or `}}` when a literal brace is needed.
-
-Keep `--output` for the less common case where the complete destination matters:
+For an exact destination:
 
 ```sh
 browsershot /pricing --output '/tmp/{host}/{route}_{timestamp}.png'
-browsershot /pricing --output .browsershot/captures/latest.png
 ```
 
-An explicit `--output` cannot be combined with an explicit `--group` or
-`--label`. A run-level `--output` overrides saved naming settings. Conversely,
-an explicit group or label uses the structured default instead of a saved
-`output`. Saved `output` cannot coexist with saved `group` or `label`.
+An explicit output is the expanded path; it does not promise to append `.png`. Explicit `--output` cannot accompany explicit `--group` or `--label` and overrides saved naming. Explicit group or label selects structured naming instead of saved output. Saved `output` cannot coexist with saved group or label.
 
-## The capture lifecycle
+</details>
 
-Each capture uses one browser launch and one screenshot. The page is loaded,
-checked for a disallowed HTTP status, and allowed to render. Then Browsershot
-applies an optional delay, waits for an expected element and/or text, runs
-actions, records inspection data, draws annotations, and writes the PNG.
+<details>
+<summary>Readiness, actions, inspection, and output</summary>
 
-To capture only the first matching visible element, use `--element`:
+The default viewport is `1440x900` at 2× scale. Navigation waits for the load event with a 30-second timeout; `--delay <ms>` adds settling time.
+
+`--expect-element` waits up to 10 seconds for the first matching CSS element to be visible, not necessarily unobscured or in the viewport. `--expect-text` checks for a case-sensitive substring in body text. `--element` captures the first matching visible element.
+
+HTTP and blank-render guards catch common false captures. Override them with `--allow-status` and `--allow-blank` when intentional. HTTP 401/403 remain authentication failures even with `--allow-status`, because the authentication check runs first. A render guard is not proof that the intended UI is correct.
+
+Actions are per-run and use semicolon-separated `kind:value` steps. Supported kinds are `focus`, `click`, `hover`, `press`, `type`, and `wait` (milliseconds):
 
 ```sh
-browsershot /dashboard --element '#main-card' --json
-browsershot config set element '#main-card'
+browsershot /settings --act 'focus:#name;type:Ada;press:Tab;wait:300'
 ```
 
-Element capture waits up to 10 seconds for the selector, scrolls the element
-into view, and writes only its bounds. Use `--no-element` to disable a saved
-selector for one run. Element capture cannot be combined with `--full-page`;
-pass `--no-element` when the whole page is required.
+`--inspect` records the first matching element. `--inspect-attr` highlights an attribute, `--inspect-json <path>` chooses the sidecar path, and `--inspect-note <text>` adds a note. A final hover can add a cursor/link preview.
 
-`--expect-text <text>` is a case-sensitive check against `body.innerText`.
-`--expect-element <selector>` waits up to 10 seconds for the first matching CSS
-element to become visible. It uses the first match, so a specific selector is
-safer than a broad one. Visibility does not prove that an element is in the
-viewport, unobscured, fully opaque, or correct in every other way.
+Repeat `--box x,y,w,h[,color]` and `--marker x,y[,color]` for coordinate evidence. Coordinates use post-scale PNG pixels and a top-left origin. These annotations require macOS because they use `osascript`.
 
-The built-in guards catch two common false captures:
+Successful `--json` output has these fields:
 
-- A non-2xx/3xx response fails unless you pass `--allow-status`.
-- A page that still looks almost empty after polling fails unless you pass
-  `--allow-blank`.
+| Field | Meaning |
+| --- | --- |
+| `outputPath` | Absolute PNG path |
+| `bytes` | PNG byte count |
+| `sha256` | PNG SHA-256 digest |
+| `inspectJsonPath` | Inspection sidecar path, or `null` |
+| `inspected` | Inspection result, or `null` |
+| `publishedUrl` | Public URL, or `null` |
 
-Use `--delay <ms>` when the application needs a known extra settling period.
-Use `--verbose` when diagnosing navigation, browser, console, request, or action
-problems. Guard and capture failures exit `1`; invalid options, conflicts,
-and malformed project configuration exit `2`.
+With `--json`, exactly one object is emitted on stdout; human diagnostics use stderr. Without JSON, the absolute PNG path is first on stdout, and successful publishing additionally prints a Markdown embed. JSON success is emitted only after requested sidecar and publishing work succeeds.
 
-## Actions and visual marks
+Exit codes: `0` success; `1` capture or page-guard failure; `2` usage, conflicting flags, or invalid config; `3` Authstate or credentials environment failure; `4` PNG written but sidecar failed; `5` PNG written but publishing failed. In the last two cases the PNG remains and there is no successful JSON result.
 
-Actions are transient and run only for the current capture. Steps are separated
-by semicolons and use CSS selectors:
+</details>
+
+<details>
+<summary>Authenticated pages — optional Authstate setup</summary>
+
+[Authstate](https://github.com/fayez-nazzal/authstate) handles installation and credential setup. Browsershot delegates login rather than implementing it. Named users require an Authstate executable supporting `ensure --user`.
 
 ```sh
-browsershot /settings \
-  --act 'focus:#name;type:Ada;press:Tab;wait:300' \
-  --inspect ':focus' \
-  --json
+browsershot /account --auth-user member
 ```
 
-Supported steps are `focus`, `click`, `hover`, `press`, `type`, and `wait` in
-milliseconds. Hover uses Playwright's locator hover behavior, so hover states
-are applied before inspection and screenshot capture. When `hover` is the final
-step, the capture also draws a polished SVG cursor horizontally centered near
-the element's bottom edge. It follows the element's computed CSS cursor, including
-pointer, text, resize, wait, grab, and prohibited variants. `cursor: none`
-draws nothing, and a custom cursor URL uses its declared fallback keyword.
-Hovered links also receive a compact black URL preview with white text,
-positioned below the cursor and centered to the same axis, with capture-bound
-clamping near the viewport edge.
-For example:
+`--auth-user` and `--auth-credentials <path>` imply `--auth`; user names are keys in `.testing-credentials.yaml`. Discovery searches upward from the invocation directory and stops at the repository boundary. Credential and storage-state paths are not saved in the Browsershot profile; keep these files private. `--no-auth` disables saved authentication.
+
+When authentication is requested, a 401/403 triggers one session verification and retry. `--auth-redirect /users/sign_in` opts into the same treatment for a redirect URL containing that literal text. Save it with `config set authRedirect /users/sign_in`, or disable it for one run with `--no-auth-redirect`. No redirect matching is implicit.
+
+</details>
+
+<details>
+<summary>Publishing — optional rclone setup</summary>
+
+Publishing requires `rclone`, `curl`, and a configured Google Drive remote. Run `rclone config` to configure it. Publishing produces a public image URL, so do not publish sensitive captures.
 
 ```sh
-browsershot /dashboard \
-  --act 'hover:button#menu' \
-  --inspect '#menu' \
-  --json
-```
-
-`--inspect <selector>` records the first matching element and
-draws its markup, role, name, and state over the capture. `--inspect-json <path>`
-chooses the sidecar path; otherwise it sits beside the PNG. `--inspect-note`
-adds a note to the panel.
-
-For coordinate-level evidence, repeat `--box x,y,w,h[,color]` and
-`--marker x,y[,color]`. Coordinates use the post-scale PNG and a top-left
-origin. `--size WxH` changes the viewport, and `--full-page` captures the full
-scrollable page.
-
-## Authentication
-
-Browsershot does not contain a login script. When a session is needed, `--auth`
-asks the sibling `authstate` tool to discover `.testing-credentials.yaml`, run
-the authentication flow, and provide a storage-state jar to the browser:
-
-```sh
-browsershot https://example.com/account \
-  --auth --auth-user member \
-  --inspect '[data-testid="account-name"]' --json
-```
-
-Use `--auth-credentials <path>` when discovery should use a specific file.
-`--auth-user` implies `--auth`. Credentials and storage-state paths are never
-saved in the Browsershot profile. If a saved user would trigger auth for a
-particular public page, use `--no-auth`.
-
-Browsershot always retries once after an HTTP 401 or 403. Applications that
-redirect unauthenticated users to a login route can opt into the same retry by
-providing a literal fragment of that redirect URL:
-
-```sh
-browsershot /account --auth --auth-redirect /users/sign_in
-```
-
-The redirect rule can be saved with `browsershot config set authRedirect
-/users/sign_in`, or disabled for one run with `--no-auth-redirect`. No
-redirect matching is performed unless a fragment is explicitly configured.
-
-## Publishing
-
-Publishing is optional and belongs at the end of a verified capture. Save a
-destination for a project:
-
-```sh
-browsershot config set publish gdrive:shots/my-repo/my-branch/
+browsershot config set publish gdrive:shots/my-project/
 browsershot /pricing --publish
 ```
 
-Or choose a destination once:
+An explicit destination wins:
 
 ```sh
 browsershot /pricing --publish gdrive:other/dir/
 ```
 
-An explicit destination wins. Bare `--publish` uses the saved `publish` value
-and fails before the browser launches if none exists. `--publish-size <px>`
-sets the embed width and `--publish-label <text>` sets its alt text. If upload
-fails after the PNG is written, the PNG stays on disk and the command exits `5`.
+Bare `--publish` needs a saved destination and otherwise fails before capture. Saving `publish` alone does not upload every capture. `--publish-size <px>` sets embed width and `--publish-label <text>` sets alt text. The PNG remains on a publishing failure (exit `5`).
 
-## Configuration and reference
+</details>
 
-`browsershot config set <name> [value]` saves a setting. Boolean settings such
-as `json` and `autoOpen` take no value and turn on when set. `config unset`
-removes them. `config show` prints normalized settings, and `config path` prints
-the current config path.
+## Help
 
-The default PNG path is
-`.browsershot/captures/{host}/{route}_{timestamp}.png`, plus a `_q-{query}`
-segment when the URL has a query. `--group` and `--label` cover everyday
-organization; `--output` accepts any writable path or template when the exact
-destination matters. `-h, --help` prints the compact command reference;
-`-v, --version` prints the version.
+| Symptom | Next step |
+| --- | --- |
+| Command not found | Repeat the PATH export from the checkout, or use the absolute compiled binary path. |
+| Missing Chromium | Run `bunx playwright install chromium` from the checkout; on Linux, see the OS-dependency note above. |
+| Short route fails | Set `baseUrl` in the app directory; inspect `config path` and `config show`. |
+| Invalid saved config | Use `config path` and repair the reported file. `config unset` cannot bypass malformed JSON. |
+| Unexpected page or state | Check that the app is running and selectors/auth are correct; use `--verbose` for diagnostics rather than routinely disabling guards. |
 
-## For agents
+If something still looks wrong, [open an issue](https://github.com/fayez-nazzal/browsershot/issues) with the version, command, and error, but never credentials. Use [`SECURITY.md`](SECURITY.md) for private vulnerability reports.
 
-The bundled [`AGENTS.md`](AGENTS.md) is the short operational recipe. The
-installed [`skills/browsershot/SKILL.md`](skills/browsershot/SKILL.md) carries
-the same essentials for agents that discover the skill directly.
+## Development
+
+For the clone, Bun dependency install, and matching Chromium download, follow [Get started](#get-started). The following commands run from the Browsershot checkout:
+
+```sh
+bun run start --help
+bun run start https://example.com --json
+bun test
+bun run build
+./dist/browsershot --help
+```
+
+`start` executes `src/cli.ts` directly, so source edits need no compilation for a source run. `bun test` includes unit tests and real Chromium-backed CLI tests; fixtures use local HTML and local HTTP servers, not live Authstate credentials or a configured cloud remote. `build` writes the locally compiled `dist/browsershot`; rerunning it refreshes that binary.
+
+CI adds `--with-deps` on Linux, then builds and tests. Code map: `src/cli.ts` is the entry point and help, `src/` contains capture/runtime modules, and `test/` contains tests. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for contribution conventions.
 
 ## License
 

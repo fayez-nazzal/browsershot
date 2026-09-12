@@ -5,8 +5,8 @@ Thanks for helping out.
 ## Set up
 
 ```sh
-bun install
-bun playwright install chromium
+bun install --frozen-lockfile
+bunx playwright install chromium
 bun run build
 ```
 
@@ -18,7 +18,11 @@ bun run build
 bun test
 ```
 
-The unit tests do not open a browser and do not use the network.
+The test suite includes unit tests and real Chromium-backed CLI tests using local
+HTML and local HTTP fixtures. It does not require live Authstate credentials or a
+configured cloud publishing remote. On Linux, use
+`bunx playwright install --with-deps chromium` when browser OS dependencies are
+needed; it can require administrator privileges.
 
 ## Code style
 
