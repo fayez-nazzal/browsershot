@@ -77,6 +77,17 @@ function stalePageLock(path: string): boolean {
   }
 }
 
+function claimStalePageLock(path: string): void {
+  const claimed = `${path}.stale-${process.pid}-${Date.now()}`;
+  try {
+    renameSync(path, claimed);
+    rmSync(claimed, { recursive: true, force: true });
+  } catch (error) {
+    const code = errorCode(error);
+    if (code !== "ENOENT" && code !== "EEXIST") throw error;
+  }
+}
+
 function acquirePageLock(root: string): () => void {
   const path = pageLockPath(root);
   mkdirSync(dirname(path), { recursive: true });
@@ -94,7 +105,7 @@ function acquirePageLock(root: string): () => void {
     } catch (error) {
       if (errorCode(error) !== "EEXIST") throw error;
       if (stalePageLock(path)) {
-        rmSync(path, { recursive: true, force: true });
+        claimStalePageLock(path);
         continue;
       }
       Atomics.wait(wait, 0, 0, PAGE_LOCK_RETRY_MS);
