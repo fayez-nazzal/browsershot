@@ -308,6 +308,10 @@ async function main(): Promise<void> {
     writeStdout(`${VERSION}\n`);
   } else if (positionals[0] === "config") {
     runConfigCommand(positionals.slice(1));
+  } else if (positionals[0] === "page") {
+    throw new UsageError("page commands are not implemented yet");
+  } else if (positionals[0] === "library") {
+    throw new UsageError("library commands are not implemented yet");
   } else {
     await runCaptureCommand(values, positionals);
   }

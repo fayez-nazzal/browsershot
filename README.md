@@ -146,6 +146,7 @@ Successful `--json` output has these fields:
 | `inspectJsonPath` | Inspection sidecar path, or `null` |
 | `inspected` | Inspection result, or `null` |
 | `publishedUrl` | Public URL, or `null` |
+| `captured` | What the run captured: `{"kind": "url"}` for an ad-hoc capture, or the saved page or library entry identity |
 
 With `--json`, exactly one object is emitted on stdout; human diagnostics use stderr. Without JSON, the absolute PNG path is first on stdout, and successful publishing additionally prints a Markdown embed. JSON success is emitted only after requested sidecar and publishing work succeeds.
 

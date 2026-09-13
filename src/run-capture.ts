@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { drawAnnotations } from "./annotate.ts";
+import type { CaptureIdentity } from "./capture-target.ts";
 import { capture, isAuthenticationCaptureFailure, type CaptureOptions, type CaptureResult } from "./capture.ts";
 import { ExitError, EXIT_FAILED, EXIT_WRITE_ERROR, publishFailure } from "./exit-codes.ts";
 import { AuthStateFailure, discoverAuthCredentials, resolveAuthJar } from "./authstate.ts";
@@ -18,6 +19,7 @@ export interface SuccessSummary {
   inspectJsonPath: string | null;
   inspected: unknown;
   publishedUrl: string | null;
+  captured: CaptureIdentity;
 }
 
 export interface RunCaptureIO {
@@ -56,6 +58,7 @@ export function emptySuccess(): SuccessSummary {
     inspectJsonPath: null,
     inspected: null,
     publishedUrl: null,
+    captured: { kind: "url" },
   };
 }
 
@@ -176,6 +179,7 @@ function writeAndReport(options: ResolvedRunOptions, inspected: ElementRecord | 
   success.outputPath = out;
   success.bytes = png.length;
   success.sha256 = sha256Hex(png);
+  success.captured = options.captured;
   io.stderr(`browsershot: wrote ${out} (${png.length} bytes)\n`);
   io.stderr(`browsershot: sha256 ${success.sha256}\n`);
   if (options.report.json === false) {

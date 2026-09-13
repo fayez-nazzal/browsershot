@@ -1,6 +1,7 @@
 import { isAbsolute, join, resolve } from "node:path";
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
+import type { CaptureIdentity } from "./capture-target.ts";
 
 const DERIVED_SEGMENT_BYTES = 120;
 const LABEL_BYTES = 80;
@@ -25,7 +26,7 @@ export interface ResolveOutputPathOptions {
   output?: string;
   group?: string;
   label?: string;
-  now?: Date;
+  identity?: CaptureIdentity;
 }
 
 function twoDigits(value: number): string {
@@ -203,10 +204,28 @@ export function resolveOutputPath(options: ResolveOutputPathOptions): string {
   if (options.output != null) {
     return resolve(expandOutputTemplate(options.output, values));
   }
+  if (options.identity != null && options.identity.kind !== "url") {
+    return namedOutputPath(options, values);
+  }
   const directories = options.group == null ? [] : validateOutputGroup(options.group, values);
   const label = options.label == null ? "" : `_${validateOutputLabel(options.label, values)}`;
   const query = values.query === "" ? "" : `_q-${values.query}`;
   const suffix = `${query}${label}_${values.timestamp}.png`;
   const route = truncateUtf8(values.route, 255 - Buffer.byteLength(suffix, "utf8"));
   return join(options.capturesDirectory, ...directories, values.host, `${route}${suffix}`);
+}
+
+function namedOutputPath(
+  options: ResolveOutputPathOptions & { identity: CaptureIdentity },
+  values: OutputTemplateValues,
+): string {
+  const identity = options.identity;
+  const directories = options.group == null ? [] : validateOutputGroup(options.group, values);
+  const label = options.label == null ? "" : `_${validateOutputLabel(options.label, values)}`;
+  const folder = identity.kind === "page" ? identity.page : identity.library;
+  const lead = identity.kind === "page" ? identity.element ?? "page" : identity.entry;
+  const setup = identity.kind === "page" && identity.setup != null ? `_${safeSegment(identity.setup, "setup")}` : "";
+  const suffix = `${setup}${label}_${values.timestamp}.png`;
+  const name = safeSegment(String(lead), "capture", 255 - Buffer.byteLength(suffix, "utf8"));
+  return join(options.capturesDirectory, ...directories, safeSegment(folder, "capture"), `${name}${suffix}`);
 }
