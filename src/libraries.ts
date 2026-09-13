@@ -1,4 +1,4 @@
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { basename, join } from "node:path";
 import {
@@ -194,6 +194,23 @@ function isAbandonedLibrariesLock(path: string): boolean {
     return false;
   }
 }
+function tryAcquireLibrariesLock(path: string): boolean {
+  const temporary = `${path}.${process.pid}.${randomBytes(16).toString("hex")}.owner`;
+  try {
+    writeFileSync(temporary, `${process.pid}\n`, { flag: "wx" });
+    try {
+      linkSync(temporary, path);
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+        throw error;
+      }
+      return false;
+    }
+  } finally {
+    rmSync(temporary, { force: true });
+  }
+}
 
 
 function withLibrariesMutationLock<T>(root: string, operation: () => T): T {
@@ -203,24 +220,17 @@ function withLibrariesMutationLock<T>(root: string, operation: () => T): T {
   const waitBuffer = new Int32Array(new SharedArrayBuffer(4));
   const deadline = Date.now() + 30_000;
   while (true) {
-    try {
-      const descriptor = openSync(lockPath, "wx");
-      writeSync(descriptor, `${process.pid}\n`);
-      closeSync(descriptor);
+    if (tryAcquireLibrariesLock(lockPath)) {
       break;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
-        throw error;
-      }
-      if (isAbandonedLibrariesLock(lockPath)) {
-        rmSync(lockPath, { force: true });
-        continue;
-      }
-      if (Date.now() >= deadline) {
-        throw new UsageError(`could not acquire libraries lock: ${lockPath}`);
-      }
-      Atomics.wait(waitBuffer, 0, 0, 10);
     }
+    if (isAbandonedLibrariesLock(lockPath)) {
+      rmSync(lockPath, { force: true });
+      continue;
+    }
+    if (Date.now() >= deadline) {
+      throw new UsageError(`could not acquire libraries lock: ${lockPath}`);
+    }
+    Atomics.wait(waitBuffer, 0, 0, 10);
   }
   try {
     return operation();
