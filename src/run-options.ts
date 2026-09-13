@@ -28,6 +28,7 @@ export interface CaptureFlags {
   json?: boolean; "no-json"?: boolean;
   "auto-open"?: boolean; "no-auto-open"?: boolean;
   publish?: string; "publish-size"?: string; "publish-label"?: string;
+  plugin?: string; ready?: string; scope?: string;
 }
 
 type CaptureRunOptions = Omit<CaptureOptions, "cookiesPath" | "log">;
