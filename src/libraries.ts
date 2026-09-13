@@ -1,4 +1,4 @@
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { basename, join } from "node:path";
 import {
@@ -174,6 +174,27 @@ function atomicWrite(path: string, contents: string): void {
     rmSync(temporary, { force: true });
   }
 }
+function isAbandonedLibrariesLock(path: string): boolean {
+  try {
+    const owner = readFileSync(path, "utf8").trim();
+    const pid = Number(owner);
+    if (Number.isSafeInteger(pid) && pid > 0) {
+      try {
+        process.kill(pid, 0);
+        return false;
+      } catch (error) {
+        return (error as NodeJS.ErrnoException).code === "ESRCH";
+      }
+    }
+    return Date.now() - statSync(path).mtimeMs > 1_000;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return true;
+    }
+    return false;
+  }
+}
+
 
 function withLibrariesMutationLock<T>(root: string, operation: () => T): T {
   const directory = join(root, ".browsershot");
@@ -184,11 +205,16 @@ function withLibrariesMutationLock<T>(root: string, operation: () => T): T {
   while (true) {
     try {
       const descriptor = openSync(lockPath, "wx");
+      writeSync(descriptor, `${process.pid}\n`);
       closeSync(descriptor);
       break;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
         throw error;
+      }
+      if (isAbandonedLibrariesLock(lockPath)) {
+        rmSync(lockPath, { force: true });
+        continue;
       }
       if (Date.now() >= deadline) {
         throw new UsageError(`could not acquire libraries lock: ${lockPath}`);
