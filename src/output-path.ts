@@ -26,6 +26,7 @@ export interface ResolveOutputPathOptions {
   output?: string;
   group?: string;
   label?: string;
+  now?: Date;
   identity?: CaptureIdentity;
 }
 

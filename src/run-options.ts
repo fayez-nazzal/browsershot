@@ -197,6 +197,16 @@ function resolveRunOutput(
   });
 }
 
+function effectiveCaptureIdentity(
+  identity: CaptureIdentity,
+  flags: Readonly<CaptureFlags>,
+): CaptureIdentity {
+  if (identity.kind !== "page") return identity;
+  if (flags["no-element"] === true) return { ...identity, element: null };
+  if (flags.element !== undefined) return { kind: "url" };
+  return identity;
+}
+
 function resolvePublish(
   flags: Readonly<CaptureFlags>,
   profile: Readonly<ProfileConfig>,
@@ -270,7 +280,6 @@ export function resolveRunOptions(input: ResolveRunOptionsInput): ResolvedRunOpt
     const identity = target?.identity ?? { kind: "url" };
     const expectations = resolveExpectations(flags, profile, target);
     const auth = resolveAuth(flags, profile, target);
-    const outputPath = resolveRunOutput(flags, profile, input.paths, input.cwd, url, identity, input.now);
     const publish = resolvePublish(flags, profile);
     const viewport = flags.size === undefined
       ? target?.viewport ?? { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT }
@@ -279,6 +288,8 @@ export function resolveRunOptions(input: ResolveRunOptionsInput): ResolvedRunOpt
     if (element !== undefined && flags["full-page"] === true) {
       throw new UsageError("--element cannot be combined with --full-page; pass --no-element to capture the whole page");
     }
+    const captured = effectiveCaptureIdentity(identity, flags);
+    const outputPath = resolveRunOutput(flags, profile, input.paths, input.cwd, url, captured, input.now);
     const targetActions = target?.actions ?? [];
     const flagActions = flags.act === undefined ? [] : parseActions(flags.act);
     const actions = targetActions.length === 0 && flagActions.length === 0 ? undefined : [...targetActions, ...flagActions];
@@ -286,7 +297,7 @@ export function resolveRunOptions(input: ResolveRunOptionsInput): ResolvedRunOpt
 
     return {
       cwd: input.cwd,
-      captured: identity,
+      captured,
       capture: {
         url,
         viewport,

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Action } from "./act.ts";
 import { parseActions } from "./act.ts";
@@ -39,6 +39,86 @@ export interface SavedPage {
 export interface PagesFile {
   version: 1;
   pages: Record<string, SavedPage>;
+}
+
+const PAGE_LOCK_STALE_MS = 30_000;
+const PAGE_LOCK_RETRY_MS = 10;
+
+function errorCode(error: unknown): string | undefined {
+  if (error !== null && typeof error === "object" && "code" in error && typeof error.code === "string") {
+    return error.code;
+  }
+  return undefined;
+}
+
+function pageLockPath(root: string): string {
+  return `${pagesFilePath(root)}.lock`;
+}
+
+function stalePageLock(path: string): boolean {
+  try {
+    const owner: unknown = JSON.parse(readFileSync(join(path, "owner"), "utf8"));
+    if (owner !== null && typeof owner === "object" && "pid" in owner && typeof owner.pid === "number") {
+      try {
+        process.kill(owner.pid, 0);
+        return false;
+      } catch (error) {
+        if (errorCode(error) === "EPERM") return false;
+        if (errorCode(error) === "ESRCH") return true;
+      }
+    }
+  } catch {
+    // An owner file can be absent while the lock is being created.
+  }
+  try {
+    return Date.now() - statSync(path).mtimeMs > PAGE_LOCK_STALE_MS;
+  } catch {
+    return false;
+  }
+}
+
+function acquirePageLock(root: string): () => void {
+  const path = pageLockPath(root);
+  mkdirSync(dirname(path), { recursive: true });
+  const wait = new Int32Array(new SharedArrayBuffer(4));
+  for (;;) {
+    try {
+      mkdirSync(path);
+      try {
+        writeFileSync(join(path, "owner"), JSON.stringify({ pid: process.pid, createdAt: Date.now() }));
+      } catch (error) {
+        rmSync(path, { recursive: true, force: true });
+        throw error;
+      }
+      return () => rmSync(path, { recursive: true, force: true });
+    } catch (error) {
+      if (errorCode(error) !== "EEXIST") throw error;
+      if (stalePageLock(path)) {
+        rmSync(path, { recursive: true, force: true });
+        continue;
+      }
+      Atomics.wait(wait, 0, 0, PAGE_LOCK_RETRY_MS);
+    }
+  }
+}
+
+function writePagesUnlocked(root: string, pages: PagesFile): PagesFile {
+  const path = pagesFilePath(root);
+  const validated = validatePagesFile(pages, path);
+  mkdirSync(dirname(path), { recursive: true });
+  const temporary = `${path}.${process.pid}.tmp`;
+  writeFileSync(temporary, `${JSON.stringify(validated, null, 2)}\n`);
+  renameSync(temporary, path);
+  return validated;
+}
+
+function updatePages(root: string, update: (current: PagesFile) => PagesFile): PagesFile {
+  const release = acquirePageLock(root);
+  try {
+    return writePagesUnlocked(root, update(readPages(root)));
+  } finally {
+    release();
+  }
 }
 
 function pagesRecord(value: unknown, path: string): Record<string, unknown> {
@@ -181,20 +261,19 @@ function validatePagesFile(input: unknown, path: string): PagesFile {
 }
 
 function requireSavedPage(file: PagesFile, page: string): SavedPage {
-  const saved = file.pages[page];
-  if (saved === undefined) {
+  if (!Object.hasOwn(file.pages, page)) {
     throw new UsageError(`unknown page "${page}"; known pages: ${knownNames(Object.keys(file.pages))}`);
   }
-  return saved;
+  return file.pages[page];
 }
 
 function resolveNamedSelector(saved: SavedPage, page: string, element?: string): string | undefined {
   let selector: string | undefined = undefined;
   if (element !== undefined) {
-    selector = saved.elements?.[element];
-    if (selector === undefined) {
+    if (saved.elements === undefined || !Object.hasOwn(saved.elements, element)) {
       throw new UsageError(`unknown element "${element}" on page "${page}"; known elements: ${knownNames(recordNames(saved.elements))}`);
     }
+    selector = saved.elements[element];
   }
   return selector;
 }
@@ -202,11 +281,10 @@ function resolveNamedSelector(saved: SavedPage, page: string, element?: string):
 function resolveNamedSetup(saved: SavedPage, page: string, setup?: string): PageSetup {
   let named: PageSetup = {};
   if (setup !== undefined) {
-    const found = saved.setups?.[setup];
-    if (found === undefined) {
+    if (saved.setups === undefined || !Object.hasOwn(saved.setups, setup)) {
       throw new UsageError(`unknown setup "${setup}" on page "${page}"; known setups: ${knownNames(recordNames(saved.setups))}`);
     }
-    named = found;
+    named = saved.setups[setup];
   }
   return named;
 }
@@ -256,82 +334,86 @@ export function readPages(root: string): PagesFile {
 }
 
 export function writePages(root: string, pages: PagesFile): PagesFile {
-  const path = pagesFilePath(root);
-  const validated = validatePagesFile(pages, path);
-  mkdirSync(dirname(path), { recursive: true });
-  const temporary = `${path}.${process.pid}.tmp`;
-  writeFileSync(temporary, `${JSON.stringify(validated, null, 2)}\n`);
-  renameSync(temporary, path);
-  return validated;
+  const release = acquirePageLock(root);
+  try {
+    return writePagesUnlocked(root, pages);
+  } finally {
+    release();
+  }
 }
 
 export function savePage(root: string, name: string, page: SavedPage): PagesFile {
-  const current = readPages(root);
-  if (Object.hasOwn(current.pages, name)) {
-    throw new UsageError(`page "${name}" already exists; remove it first`);
-  }
-  return writePages(root, { version: 1, pages: { ...current.pages, [name]: page } });
+  return updatePages(root, (current) => {
+    if (Object.hasOwn(current.pages, name)) {
+      throw new UsageError(`page "${name}" already exists; remove it first`);
+    }
+    return { version: 1, pages: { ...current.pages, [name]: page } };
+  });
 }
 
 export function savePageElement(root: string, page: string, name: string, selector: string): PagesFile {
-  const current = readPages(root);
-  const saved = requireSavedPage(current, page);
-  const elements = saved.elements ?? {};
-  const setups = saved.setups ?? {};
-  if (Object.hasOwn(elements, name)) {
-    throw new UsageError(`element "${name}" already exists on page "${page}"; remove it first`);
-  }
-  if (Object.hasOwn(setups, name)) {
-    throw new UsageError(`setup "${name}" already exists on page "${page}"; remove it first`);
-  }
-  const updated: SavedPage = { ...saved, elements: { ...elements, [name]: selector } };
-  return writePages(root, { version: 1, pages: { ...current.pages, [page]: updated } });
+  return updatePages(root, (current) => {
+    const saved = requireSavedPage(current, page);
+    const elements = saved.elements ?? {};
+    const setups = saved.setups ?? {};
+    if (Object.hasOwn(elements, name)) {
+      throw new UsageError(`element "${name}" already exists on page "${page}"; remove it first`);
+    }
+    if (Object.hasOwn(setups, name)) {
+      throw new UsageError(`setup "${name}" already exists on page "${page}"; remove it first`);
+    }
+    const updated: SavedPage = { ...saved, elements: { ...elements, [name]: selector } };
+    return { version: 1, pages: { ...current.pages, [page]: updated } };
+  });
 }
 
 export function savePageSetup(root: string, page: string, name: string, setup: PageSetup): PagesFile {
-  const current = readPages(root);
-  const saved = requireSavedPage(current, page);
-  const setups = saved.setups ?? {};
-  const elements = saved.elements ?? {};
-  if (Object.hasOwn(setups, name)) {
-    throw new UsageError(`setup "${name}" already exists on page "${page}"; remove it first`);
-  }
-  if (Object.hasOwn(elements, name)) {
-    throw new UsageError(`element "${name}" already exists on page "${page}"; remove it first`);
-  }
-  const updated: SavedPage = { ...saved, setups: { ...setups, [name]: setup } };
-  return writePages(root, { version: 1, pages: { ...current.pages, [page]: updated } });
+  return updatePages(root, (current) => {
+    const saved = requireSavedPage(current, page);
+    const setups = saved.setups ?? {};
+    const elements = saved.elements ?? {};
+    if (Object.hasOwn(setups, name)) {
+      throw new UsageError(`setup "${name}" already exists on page "${page}"; remove it first`);
+    }
+    if (Object.hasOwn(elements, name)) {
+      throw new UsageError(`element "${name}" already exists on page "${page}"; remove it first`);
+    }
+    const updated: SavedPage = { ...saved, setups: { ...setups, [name]: setup } };
+    return { version: 1, pages: { ...current.pages, [page]: updated } };
+  });
 }
 
 export function removePage(root: string, name: string): PagesFile {
-  const current = readPages(root);
-  requireSavedPage(current, name);
-  const pages = { ...current.pages };
-  delete pages[name];
-  return writePages(root, { version: 1, pages });
+  return updatePages(root, (current) => {
+    requireSavedPage(current, name);
+    const pages = { ...current.pages };
+    delete pages[name];
+    return { version: 1, pages };
+  });
 }
 
 export function removePagePart(root: string, page: string, name: string): PagesFile {
-  const current = readPages(root);
-  const saved = requireSavedPage(current, page);
-  const elements = saved.elements ?? {};
-  const setups = saved.setups ?? {};
-  const isElement = Object.hasOwn(elements, name);
-  const isSetup = Object.hasOwn(setups, name);
-  if (!isElement && !isSetup) {
-    throw new UsageError(`unknown element or setup "${name}" on page "${page}"; known elements: ${knownNames(Object.keys(elements))}; known setups: ${knownNames(Object.keys(setups))}`);
-  }
-  const updated: SavedPage = { ...saved };
-  if (isElement) {
-    const remaining = { ...elements };
-    delete remaining[name];
-    updated.elements = remaining;
-  } else {
-    const remaining = { ...setups };
-    delete remaining[name];
-    updated.setups = remaining;
-  }
-  return writePages(root, { version: 1, pages: { ...current.pages, [page]: updated } });
+  return updatePages(root, (current) => {
+    const saved = requireSavedPage(current, page);
+    const elements = saved.elements ?? {};
+    const setups = saved.setups ?? {};
+    const isElement = Object.hasOwn(elements, name);
+    const isSetup = Object.hasOwn(setups, name);
+    if (!isElement && !isSetup) {
+      throw new UsageError(`unknown element or setup "${name}" on page "${page}"; known elements: ${knownNames(Object.keys(elements))}; known setups: ${knownNames(Object.keys(setups))}`);
+    }
+    const updated: SavedPage = { ...saved };
+    if (isElement) {
+      const remaining = { ...elements };
+      delete remaining[name];
+      updated.elements = remaining;
+    } else {
+      const remaining = { ...setups };
+      delete remaining[name];
+      updated.setups = remaining;
+    }
+    return { version: 1, pages: { ...current.pages, [page]: updated } };
+  });
 }
 
 export function resolvePageTarget(input: {

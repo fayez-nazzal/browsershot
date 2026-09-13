@@ -159,6 +159,26 @@ test("unknown page element and setup names list the known names", () => {
   expect(() => resolvePageTarget({ root, page: "billing", element: "summary", profile })).toThrow('unknown element "summary" on page "billing"; known elements: (none)');
 });
 
+test("name lookups do not accept inherited record properties", () => {
+  const root = scratch();
+  savePage(root, "checkout", checkoutPage());
+  expect(() => resolvePageTarget({ root, page: "constructor", profile })).toThrow('unknown page "constructor"');
+  expect(() => resolvePageTarget({ root, page: "checkout", element: "constructor", profile })).toThrow('unknown element "constructor"');
+  expect(() => resolvePageTarget({ root, page: "checkout", setup: "constructor", profile })).toThrow('unknown setup "constructor"');
+});
+
+test("element overrides report and name the effective capture", () => {
+  const root = scratch();
+  savePage(root, "checkout", checkoutPage());
+  const target = resolvePageTarget({ root, page: "checkout", element: "summary", profile });
+  const noElement = resolveRunOptions({ target, flags: { "no-element": true }, profile, paths, cwd: "/repo", now });
+  expect(noElement.captured).toEqual({ kind: "page", page: "checkout", element: null, setup: null });
+  expect(noElement.outputPath).toBe("/repo/.browsershot/captures/checkout/page_2026-09-05_14-30-12.png");
+  const override = resolveRunOptions({ target, flags: { element: "#other" }, profile, paths, cwd: "/repo", now });
+  expect(override.captured).toEqual({ kind: "url" });
+  expect(override.outputPath).toBe("/repo/.browsershot/captures/example.com/app-checkout_2026-09-05_14-30-12.png");
+});
+
 test("named page captures derive their output path from the saved names", () => {
   const root = scratch();
   savePage(root, "checkout", checkoutPage());
