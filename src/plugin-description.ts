@@ -106,6 +106,18 @@ function isAbsoluteUrl(value: string): boolean {
     return false;
   }
 }
+function validatePluginHttpUrl(value: string, source: string): void {
+  const url = new URL(value);
+  if (url.username !== "" || url.password !== "") {
+    throw pluginError(source, "discover.http.url credentials are not allowed");
+  }
+  if (url.search !== "" || value.includes("?")) {
+    throw pluginError(source, "discover.http.url query is not allowed");
+  }
+  if (url.hash !== "" || value.includes("#")) {
+    throw pluginError(source, "discover.http.url hash is not allowed");
+  }
+}
 
 function knownNamesText(names: string[]): string {
   return names.length === 0 ? "(none)" : names.join(", ");
@@ -180,6 +192,7 @@ export function parsePluginDescription(input: unknown, source: string): PluginDe
       if (typeof rawHttp.url !== "string" || !isAbsoluteUrl(rawHttp.url)) {
         throw pluginError(source, "discover.http.url must be an absolute URL");
       }
+      validatePluginHttpUrl(rawHttp.url, source);
       http = { url: rawHttp.url };
     }
   }

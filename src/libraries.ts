@@ -60,6 +60,23 @@ function isAbsoluteUrl(value: string): boolean {
   }
 }
 
+function validateLibraryBaseUrl(value: unknown, name: string): string {
+  if (typeof value !== "string" || !isAbsoluteUrl(value)) {
+    throw new UsageError(`library "${name}" needs an absolute base URL`);
+  }
+  const baseUrl = new URL(value);
+  if (baseUrl.username !== "" || baseUrl.password !== "") {
+    throw new UsageError(`library "${name}" base URL credentials are not allowed`);
+  }
+  if (baseUrl.search !== "" || value.includes("?")) {
+    throw new UsageError(`library "${name}" base URL query is not allowed`);
+  }
+  if (baseUrl.hash !== "" || value.includes("#")) {
+    throw new UsageError(`library "${name}" base URL hash is not allowed`);
+  }
+  return value;
+}
+
 function nameList(names: string[]): string {
   if (names.length === 0) {
     return "(none)";
@@ -87,17 +104,11 @@ function validateLibraryDefinition(input: unknown, path: string, name: string): 
     throw new UsageError(`invalid libraries file: ${path}`);
   }
   const raw = input as Record<string, unknown>;
-  if (typeof raw.baseUrl !== "string" || !isAbsoluteUrl(raw.baseUrl)) {
-    throw new UsageError(`library "${name}" needs an absolute base URL`);
-  }
-  const baseUrl = new URL(raw.baseUrl);
-  if (baseUrl.username !== "" || baseUrl.password !== "") {
-    throw new UsageError(`library "${name}" base URL credentials are not allowed`);
-  }
+  const baseUrl = validateLibraryBaseUrl(raw.baseUrl, name);
   if (typeof raw.plugin !== "string" || raw.plugin === "") {
     throw new UsageError(`library "${name}" needs a non-empty plugin`);
   }
-  const definition: LibraryDefinition = { baseUrl: raw.baseUrl, plugin: raw.plugin };
+  const definition: LibraryDefinition = { baseUrl, plugin: raw.plugin };
   const ready = optionalSelector(raw, "ready", name);
   if (ready !== undefined) {
     definition.ready = ready;
@@ -108,6 +119,7 @@ function validateLibraryDefinition(input: unknown, path: string, name: string): 
   }
   return definition;
 }
+
 
 function validateLibrariesFile(input: unknown, path: string): LibrariesFile {
   if (input == null || typeof input !== "object" || Array.isArray(input)) {
@@ -170,20 +182,18 @@ export function saveLibrary(root: string, name: string, definition: LibraryDefin
     throw new UsageError(`library name "${name}" is reserved; reserved words: ${RESERVED_LIBRARY_WORDS.join(", ")}`);
   }
   const current = readLibraries(root);
-  if (current.libraries[name] !== undefined) {
+  if (Object.prototype.hasOwnProperty.call(current.libraries, name)) {
     throw new UsageError(`library "${name}" already exists; remove it first`);
   }
+  validateLibraryBaseUrl(definition.baseUrl, name);
   readPluginDescription(root, definition.plugin);
-  if (!isAbsoluteUrl(definition.baseUrl)) {
-    throw new UsageError(`library "${name}" needs an absolute base URL`);
-  }
   const libraries = { ...current.libraries, [name]: definition };
   return writeLibraries(root, { version: 1, libraries });
 }
 
 export function removeLibrary(root: string, name: string): LibrariesFile {
   const current = readLibraries(root);
-  if (current.libraries[name] === undefined) {
+  if (!Object.prototype.hasOwnProperty.call(current.libraries, name)) {
     throw new UsageError(`unknown library "${name}"; known libraries: ${knownLibraryList(current)}`);
   }
   const libraries = { ...current.libraries };
@@ -197,10 +207,10 @@ export function readResolvedLibrary(
   name: string,
 ): { definition: LibraryDefinition; description: PluginDescription } {
   const file = readLibraries(root);
-  const definition = file.libraries[name];
-  if (definition === undefined) {
+  if (!Object.prototype.hasOwnProperty.call(file.libraries, name)) {
     throw new UsageError(`unknown library "${name}"; known libraries: ${knownLibraryList(file)}`);
   }
+  const definition = file.libraries[name]!;
   return { definition, description: readPluginDescription(root, definition.plugin) };
 }
 
