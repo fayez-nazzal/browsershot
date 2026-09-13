@@ -22,6 +22,7 @@ import {
   fetchLibraryCatalog,
   readCachedCatalog,
   readLibraries,
+  readResolvedLibrary,
   removeLibrary,
   resolveLibraryTarget,
   saveLibrary,
@@ -537,13 +538,13 @@ function captureFlagPresent(values: CaptureFlags): boolean {
   const text = (
     values.output !== undefined || values.group !== undefined || values.label !== undefined
     || values.size !== undefined || values.element !== undefined || values.delay !== undefined
-    || values.act !== undefined || values.inspect !== undefined || values.publish !== undefined
-    || values["auth-user"] !== undefined || values["auth-credentials"] !== undefined
-    || values["auth-redirect"] !== undefined || values["auth-purpose"] !== undefined
-    || values["expect-text"] !== undefined || values["expect-element"] !== undefined
-    || values["inspect-attr"] !== undefined || values["inspect-json"] !== undefined
-    || values["inspect-note"] !== undefined || values["publish-size"] !== undefined
-    || values["publish-label"] !== undefined
+    || values.setup !== undefined || values.act !== undefined || values.inspect !== undefined
+    || values.publish !== undefined || values["auth-user"] !== undefined
+    || values["auth-credentials"] !== undefined || values["auth-redirect"] !== undefined
+    || values["auth-purpose"] !== undefined || values["expect-text"] !== undefined
+    || values["expect-element"] !== undefined || values["inspect-attr"] !== undefined
+    || values["inspect-json"] !== undefined || values["inspect-note"] !== undefined
+    || values["publish-size"] !== undefined || values["publish-label"] !== undefined
   );
   const toggles = (
     values.auth === true || values.json === true || values.verbose === true
@@ -584,16 +585,26 @@ async function runLibraryCommand(values: CaptureFlags, args: string[]): Promise<
   } else {
     rejectLibraryFlags(values);
     if (command === "list") {
+      rejectLibraryManagementOptions(values, command);
       await runLibraryListCommand(args.slice(1));
     } else if (command === "show") {
+      rejectLibraryManagementOptions(values, command);
       runLibraryShowCommand(args.slice(1));
     } else if (command === "refresh") {
+      rejectLibraryManagementOptions(values, command);
       await runLibraryRefreshCommand(args.slice(1));
     } else if (command === "remove") {
+      rejectLibraryManagementOptions(values, command);
       runLibraryRemoveCommand(args.slice(1));
     } else {
       await runLibraryCaptureCommand(values, args);
     }
+  }
+}
+
+function rejectLibraryManagementOptions(values: CaptureFlags, command: string): void {
+  if (captureFlagPresent(values)) {
+    throw new UsageError(`library ${command} accepts no options`);
   }
 }
 
@@ -624,6 +635,7 @@ async function runLibraryListCommand(args: string[]): Promise<void> {
     writeStdout(`${JSON.stringify(readLibraries(root), null, 2)}\n`);
   } else {
     const name = args[0]!;
+    readResolvedLibrary(root, name);
     const cached = readCachedCatalog(root, name);
     const entries = cached ?? await fetchLibraryCatalog({ root, name });
     writeStdout(`${JSON.stringify(entries, null, 2)}\n`);
@@ -664,6 +676,7 @@ async function runLibraryCaptureCommand(values: CaptureFlags, args: string[]): P
   if (args.length !== 2) {
     throw new UsageError("library capture needs a library and an entry");
   }
+  rejectSetupFlag(values);
   const cwd = process.cwd();
   const target = await resolveLibraryTarget({ library: args[0]!, entry: args[1]!, root: cwd });
   const profile = readProfile(cwd);

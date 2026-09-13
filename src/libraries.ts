@@ -90,6 +90,10 @@ function validateLibraryDefinition(input: unknown, path: string, name: string): 
   if (typeof raw.baseUrl !== "string" || !isAbsoluteUrl(raw.baseUrl)) {
     throw new UsageError(`library "${name}" needs an absolute base URL`);
   }
+  const baseUrl = new URL(raw.baseUrl);
+  if (baseUrl.username !== "" || baseUrl.password !== "") {
+    throw new UsageError(`library "${name}" base URL credentials are not allowed`);
+  }
   if (typeof raw.plugin !== "string" || raw.plugin === "") {
     throw new UsageError(`library "${name}" needs a non-empty plugin`);
   }
@@ -121,6 +125,9 @@ function validateLibrariesFile(input: unknown, path: string): LibrariesFile {
   for (const name of Object.keys(stored).sort()) {
     if (!LIBRARY_NAME_PATTERN.test(name)) {
       throw new UsageError(`invalid library name "${name}"; names match [a-z0-9][a-z0-9_-]*`);
+    }
+    if (RESERVED_LIBRARY_WORDS.some((word) => word === name)) {
+      throw new UsageError(`library name "${name}" is reserved; reserved words: ${RESERVED_LIBRARY_WORDS.join(", ")}`);
     }
     libraries[name] = validateLibraryDefinition(stored[name], path, name);
   }

@@ -110,6 +110,32 @@ function isAbsoluteUrl(value: string): boolean {
 function knownNamesText(names: string[]): string {
   return names.length === 0 ? "(none)" : names.join(", ");
 }
+function isKnownAddressPlaceholder(name: string): boolean {
+  return name === "base" || name === "id" || name === "group" || name === "label";
+}
+
+function validateAddressTemplate(template: string): void {
+  for (let index = 0; index < template.length;) {
+    if (template.startsWith("{{", index) || template.startsWith("}}", index)) {
+      index += 2;
+      continue;
+    }
+    if (template[index] === "{") {
+      const close = template.indexOf("}", index + 1);
+      if (close === -1) {
+        index += 1;
+        continue;
+      }
+      const name = template.slice(index + 1, close);
+      if (!isKnownAddressPlaceholder(name)) {
+        throw new UsageError(`unknown address placeholder: {${name}}`);
+      }
+      index = close + 1;
+      continue;
+    }
+    index += 1;
+  }
+}
 
 function compareCodePoints(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
@@ -207,6 +233,7 @@ export function parsePluginDescription(input: unknown, source: string): PluginDe
   if (!isNonEmptyString(input.address)) {
     throw pluginError(source, "address must be a non-empty string");
   }
+  validateAddressTemplate(input.address);
   let ready: string | undefined;
   if (input.ready !== undefined) {
     if (!isNonEmptyString(input.ready)) {
@@ -295,6 +322,9 @@ export function knownPluginNames(root: string): string[] {
 }
 
 export function readPluginDescription(root: string, name: string): PluginDescription {
+  if (typeof name !== "string" || !NAME_PATTERN.test(name)) {
+    throw new UsageError(`invalid plugin name "${name}"; names match [a-z0-9][a-z0-9_-]*`);
+  }
   const path = join(root, ".browsershot", "plugins", `${name}.json`);
   if (existsSync(path)) {
     return parsePluginDescription(readPluginFile(path), name);
@@ -443,6 +473,7 @@ export function expandPluginAddress(
   baseUrl: string,
 ): string {
   const template = description.address;
+  validateAddressTemplate(template);
   const base = trimTrailingSlashes(baseUrl);
   const values = { base, id: entry.id, group: entry.group ?? "", label: entry.label ?? "" };
   let expanded = "";
@@ -466,7 +497,7 @@ export function expandPluginAddress(
       }
       const name = template.slice(index + 1, close);
       if (!Object.prototype.hasOwnProperty.call(values, name)) {
-        throw new Error(`unknown address placeholder: {${name}}`);
+        throw new UsageError(`unknown address placeholder: {${name}}`);
       }
       expanded += values[name as keyof typeof values];
       index = close + 1;
