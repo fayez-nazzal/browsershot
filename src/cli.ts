@@ -8,7 +8,6 @@ import {
   readPages,
   removePage,
   removePagePart,
-  requireSavedPage,
   resolvePageTarget,
   RESERVED_PAGE_WORDS,
   savePage,
@@ -323,6 +322,16 @@ function runConfigCommand(args: string[]): void {
 
 const PAGE_DEFINITION_COMMANDS: readonly string[] = RESERVED_PAGE_WORDS;
 
+function readPageDefinition(root: string, name: string): SavedPage {
+  const pages = readPages(root);
+  const page = pages.pages[name];
+  if (page === undefined) {
+    const known = Object.keys(pages.pages).sort();
+    throw new UsageError(`unknown page "${name}"; known pages: ${known.length === 0 ? "(none)" : known.join(", ")}`);
+  }
+  return page;
+}
+
 const PAGE_SETTING_FLAGS = ["auth-user", "auth-redirect", "expect-element", "expect-text", "act", "size"];
 
 function flagIsSet(value: unknown): boolean {
@@ -425,7 +434,7 @@ function runPageDefinitionCommand(values: CaptureFlags, args: string[]): void {
       if (args.length !== 2) {
         throw new UsageError("page show needs a page");
       }
-      writeStdout(`${JSON.stringify(requireSavedPage(readPages(root), args[1]!), null, 2)}\n`);
+      writeStdout(`${JSON.stringify(readPageDefinition(root, args[1]!), null, 2)}\n`);
     } else {
       if (args.length < 2 || args.length > 3) {
         throw new UsageError("page remove needs a page");

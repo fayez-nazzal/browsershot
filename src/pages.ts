@@ -180,7 +180,7 @@ function validatePagesFile(input: unknown, path: string): PagesFile {
   return { version: 1, pages };
 }
 
-export function requireSavedPage(file: PagesFile, page: string): SavedPage {
+function requireSavedPage(file: PagesFile, page: string): SavedPage {
   const saved = file.pages[page];
   if (saved === undefined) {
     throw new UsageError(`unknown page "${page}"; known pages: ${knownNames(Object.keys(file.pages))}`);
