@@ -487,7 +487,12 @@ export function expandPluginAddress(
   const template = description.address;
   validateAddressTemplate(template);
   const base = trimTrailingSlashes(baseUrl);
-  const values = { base, id: entry.id, group: entry.group ?? "", label: entry.label ?? "" };
+  const values = {
+    base,
+    id: encodeURIComponent(entry.id),
+    group: encodeURIComponent(entry.group ?? ""),
+    label: encodeURIComponent(entry.label ?? ""),
+  };
   let expanded = "";
   for (let index = 0; index < template.length;) {
     if (template.startsWith("{{", index)) {

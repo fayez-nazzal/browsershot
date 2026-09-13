@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { basename, join } from "node:path";
 import {
   expandPluginAddress,
@@ -164,43 +165,94 @@ export function readLibraries(root: string): LibrariesFile {
   }
 }
 
-export function writeLibraries(root: string, file: LibrariesFile): LibrariesFile {
+function atomicWrite(path: string, contents: string): void {
+  const temporary = `${path}.${process.pid}.${randomBytes(16).toString("hex")}.tmp`;
+  try {
+    writeFileSync(temporary, contents, { flag: "wx" });
+    renameSync(temporary, path);
+  } finally {
+    rmSync(temporary, { force: true });
+  }
+}
+
+function withLibrariesMutationLock<T>(root: string, operation: () => T): T {
+  const directory = join(root, ".browsershot");
+  mkdirSync(directory, { recursive: true });
+  const lockPath = `${librariesFilePath(root)}.lock`;
+  const waitBuffer = new Int32Array(new SharedArrayBuffer(4));
+  const deadline = Date.now() + 30_000;
+  while (true) {
+    try {
+      const descriptor = openSync(lockPath, "wx");
+      closeSync(descriptor);
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+        throw error;
+      }
+      if (Date.now() >= deadline) {
+        throw new UsageError(`could not acquire libraries lock: ${lockPath}`);
+      }
+      Atomics.wait(waitBuffer, 0, 0, 10);
+    }
+  }
+  try {
+    return operation();
+  } finally {
+    rmSync(lockPath, { force: true });
+  }
+}
+
+function writeLibrariesUnlocked(root: string, file: LibrariesFile): LibrariesFile {
   const path = librariesFilePath(root);
   const validated = validateLibrariesFile(file, path);
   mkdirSync(join(root, ".browsershot"), { recursive: true });
-  const temporary = `${path}.${process.pid}.tmp`;
-  writeFileSync(temporary, `${JSON.stringify(validated, null, 2)}\n`);
-  renameSync(temporary, path);
+  atomicWrite(path, `${JSON.stringify(validated, null, 2)}\n`);
   return validated;
 }
 
+export function writeLibraries(root: string, file: LibrariesFile): LibrariesFile {
+  return withLibrariesMutationLock(root, () => writeLibrariesUnlocked(root, file));
+}
+
 export function saveLibrary(root: string, name: string, definition: LibraryDefinition): LibrariesFile {
-  if (!LIBRARY_NAME_PATTERN.test(name)) {
-    throw new UsageError(`invalid library name "${name}"; names match [a-z0-9][a-z0-9_-]*`);
-  }
-  if (RESERVED_LIBRARY_WORDS.some((word) => word === name)) {
-    throw new UsageError(`library name "${name}" is reserved; reserved words: ${RESERVED_LIBRARY_WORDS.join(", ")}`);
-  }
-  const current = readLibraries(root);
-  if (Object.prototype.hasOwnProperty.call(current.libraries, name)) {
-    throw new UsageError(`library "${name}" already exists; remove it first`);
-  }
-  validateLibraryBaseUrl(definition.baseUrl, name);
-  readPluginDescription(root, definition.plugin);
-  const libraries = { ...current.libraries, [name]: definition };
-  return writeLibraries(root, { version: 1, libraries });
+  return withLibrariesMutationLock(root, () => {
+    if (!LIBRARY_NAME_PATTERN.test(name)) {
+      throw new UsageError(`invalid library name "${name}"; names match [a-z0-9][a-z0-9_-]*`);
+    }
+    if (RESERVED_LIBRARY_WORDS.some((word) => word === name)) {
+      throw new UsageError(`library name "${name}" is reserved; reserved words: ${RESERVED_LIBRARY_WORDS.join(", ")}`);
+    }
+    const current = readLibraries(root);
+    if (Object.prototype.hasOwnProperty.call(current.libraries, name)) {
+      throw new UsageError(`library "${name}" already exists; remove it first`);
+    }
+    validateLibraryBaseUrl(definition.baseUrl, name);
+    readPluginDescription(root, definition.plugin);
+    const libraries = { ...current.libraries, [name]: definition };
+    return writeLibrariesUnlocked(root, { version: 1, libraries });
+  });
 }
 
 export function removeLibrary(root: string, name: string): LibrariesFile {
-  const current = readLibraries(root);
-  if (!Object.prototype.hasOwnProperty.call(current.libraries, name)) {
-    throw new UsageError(`unknown library "${name}"; known libraries: ${knownLibraryList(current)}`);
-  }
-  const libraries = { ...current.libraries };
-  delete libraries[name];
-  rmSync(catalogCachePath(root, name), { force: true });
-  return writeLibraries(root, { version: 1, libraries });
+  return withLibrariesMutationLock(root, () => {
+    const current = readLibraries(root);
+    if (!Object.prototype.hasOwnProperty.call(current.libraries, name)) {
+      throw new UsageError(`unknown library "${name}"; known libraries: ${knownLibraryList(current)}`);
+    }
+    const libraries = { ...current.libraries };
+    delete libraries[name];
+    rmSync(catalogCachePath(root, name), { force: true });
+    return writeLibrariesUnlocked(root, { version: 1, libraries });
+  });
 }
+
+function authenticatedCatalogOrigin(baseUrl: string, catalogUrl: string): void {
+  if (new URL(baseUrl).origin !== new URL(catalogUrl).origin) {
+    throw new UsageError("authenticated library catalog URL must share the registered library origin");
+  }
+}
+
 
 export function readResolvedLibrary(
   root: string,
@@ -265,9 +317,7 @@ export function writeCatalogCache(root: string, library: string, entries: Catalo
   const path = catalogCachePath(root, library);
   mkdirSync(join(root, ".browsershot", "cache"), { recursive: true });
   const file: CatalogCacheFile = { fetchedAt: new Date().toISOString(), entries };
-  const temporary = `${path}.${process.pid}.tmp`;
-  writeFileSync(temporary, `${JSON.stringify(file, null, 2)}\n`);
-  renameSync(temporary, path);
+  atomicWrite(path, `${JSON.stringify(file, null, 2)}\n`);
 }
 
 async function fetchCatalogDocument(url: string, headers: Record<string, string>): Promise<unknown> {
@@ -318,7 +368,14 @@ export async function fetchLibraryCatalog(input: {
   const { definition, description } = readResolvedLibrary(input.root, input.name);
   let headers: Record<string, string> = {};
   let authVariable: string | undefined;
+  if (description.discover.files !== undefined) {
+    const entries = await discoverFileEntries(input.root, description.discover.files);
+    writeCatalogCache(input.root, input.name, entries);
+    return entries;
+  }
+  const url = catalogUrl(description, definition.baseUrl);
   if (description.auth !== undefined) {
+    authenticatedCatalogOrigin(definition.baseUrl, url);
     authVariable = description.auth.valueFrom.slice(ENV_REFERENCE_PREFIX.length);
     try {
       const resolved = resolvePluginAuthHeader(description.auth);
@@ -333,12 +390,6 @@ export async function fetchLibraryCatalog(input: {
       throw error;
     }
   }
-  if (description.discover.files !== undefined) {
-    const entries = await discoverFileEntries(input.root, description.discover.files);
-    writeCatalogCache(input.root, input.name, entries);
-    return entries;
-  }
-  const url = catalogUrl(description, definition.baseUrl);
   const fetcher = input.fetcher ?? fetchCatalogDocument;
   let document: unknown;
   try {

@@ -167,6 +167,28 @@ test("expandPluginAddress expands id, base, literal braces, and rejects unknown 
     /unknown address placeholder: \{unknownField\}/,
   );
 });
+test("expandPluginAddress URL-encodes catalog placeholders while preserving the raw base", () => {
+  const description: PluginDescription = {
+    version: 1,
+    name: "encoded-plugin",
+    discover: {
+      http: { path: "/catalog.json" },
+      entries: "entries",
+      id: "id",
+    },
+    address: "{base}/iframe.html?id={id}&group={group}&label={label}",
+  };
+
+  expect(
+    expandPluginAddress(
+      description,
+      { id: "button&primary?#", group: "Components/Button", label: "Primary & default" },
+      "https://storybook.example.test/app/",
+    ),
+  ).toBe(
+    "https://storybook.example.test/app/iframe.html?id=button%26primary%3F%23&group=Components%2FButton&label=Primary%20%26%20default",
+  );
+});
 
 test("parsePluginDescription rejects invalid version, discover, http, auth, and name definitions", () => {
   const valid = {

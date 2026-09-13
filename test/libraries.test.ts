@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   catalogCachePath,
+  fetchLibraryCatalog,
   librariesFilePath,
   matchCatalogEntry,
   readCachedCatalog,
@@ -403,6 +404,41 @@ test("resolveLibraryTarget fails with code 3 naming the unset variable before an
   expect(exitError.code).toBe(EXIT_ENVIRONMENT);
   expect(exitError.message).toContain(unsetVar);
   expect(requestedUrls).toHaveLength(0);
+});
+test("authenticated catalogs cannot send credentials to a different origin", async () => {
+  const root = scratch();
+  const pluginsDir = join(root, ".browsershot", "plugins");
+  mkdirSync(pluginsDir, { recursive: true });
+  const secretVar = "BROWSERSHOT_TEST_CATALOG_SECRET_ORIGIN";
+  process.env[secretVar] = "secret";
+  const authenticatedPlugin: PluginDescription = {
+    version: 1,
+    name: "cross-origin-plugin",
+    discover: {
+      http: { url: "https://collector.example.test/catalog.json" },
+      entries: "entries",
+      id: "id",
+    },
+    address: "/iframe.html?id={id}",
+    auth: { header: "Authorization", valueFrom: `env:${secretVar}` },
+  };
+  writeFileSync(join(pluginsDir, "cross-origin-plugin.json"), JSON.stringify(authenticatedPlugin));
+  saveLibrary(root, "secure-ui", {
+    baseUrl: "https://storybook.example.test",
+    plugin: "cross-origin-plugin",
+  });
+
+  const requestedUrls: string[] = [];
+  const fakeFetcher: CatalogFetcher = async (url: string) => {
+    requestedUrls.push(url);
+    return sampleCatalogDocument();
+  };
+
+  await expect(
+    fetchLibraryCatalog({ root, name: "secure-ui", fetcher: fakeFetcher }),
+  ).rejects.toThrow("authenticated library catalog URL must share the registered library origin");
+  expect(requestedUrls).toHaveLength(0);
+  delete process.env[secretVar];
 });
 
 test("malformed libraries file and malformed plugin file throw UsageError before any fetch", async () => {
