@@ -15,6 +15,7 @@ test("the runner executes one shared pipeline and always cleans run temp", async
   const outputPath = join(cwd, "capture.png");
   const options: ResolvedRunOptions = {
     cwd,
+    captured: { kind: "url" },
     capture: { url: "https://example.test", fullPage: false, delayMs: 0, allowBlank: false },
     auth: { requested: false },
     outputPath,
@@ -56,6 +57,7 @@ test("sha256Hex distinguishes different byte payloads", () => {
 function optionsFor(cwd: string, patch: Partial<ResolvedRunOptions> = {}): ResolvedRunOptions {
   return {
     cwd,
+    captured: { kind: "url" },
     capture: { url: "https://example.test", fullPage: false, delayMs: 0, allowBlank: false },
     auth: { requested: false },
     outputPath: join(cwd, "capture.png"),
@@ -235,7 +237,7 @@ test("failed verification preserves authstate failure code and original context"
   )).rejects.toMatchObject({ message: expect.stringMatching(/HTTP 401.*login failed/), code: 1 });
 });
 
-test("emptySuccess carries every success key, all null", () => {
+test("emptySuccess carries every success key and a url identity", () => {
   expect(Object.keys(emptySuccess())).toEqual([
     "outputPath",
     "bytes",
@@ -243,6 +245,8 @@ test("emptySuccess carries every success key, all null", () => {
     "inspectJsonPath",
     "inspected",
     "publishedUrl",
+    "captured",
   ]);
-  expect(Object.values(emptySuccess()).every((value) => value === null)).toBe(true);
+  expect(emptySuccess().captured).toEqual({ kind: "url" });
+  expect(Object.values(emptySuccess()).every((value) => value === null || typeof value === "object")).toBe(true);
 });

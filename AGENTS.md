@@ -64,6 +64,24 @@ beginning with `/`); ordinary anchors are ignored.
 Prefer `--group` and `--label` because they add safe separators automatically;
 use `--output` only when the complete destination matters.
 
+## 3. Saved pages
+
+Use a saved page to recapture a known view by name, instead of rebuilding its
+route, selector, and flags:
+
+```sh
+browsershot page checkout summary --setup empty
+browsershot page add checkout /checkout --auth-user member
+```
+
+`page <page> [<element>] [--setup <name>]` captures; `page add`, `page element`,
+`page setup`, `page list`, `page show`, and `page remove` manage definitions,
+which live in `.browsershot/pages.json`. Page values are defaults, a setup
+replaces the fields it declares, and per-run flags still win. Named captures are
+written to
+`.browsershot/captures/{page}/{element|page}[_{setup}]_{timestamp}.png`, with no
+`_q-{query}` segment.
+
 ## Check the result
 
 A PNG only proves that a file was written. For reliable checks, use

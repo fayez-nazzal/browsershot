@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { parseActions } from "./act.ts";
+import type { CaptureIdentity, CaptureTarget } from "./capture-target.ts";
 import { parseBoxFlag, parseMarkerFlag, type BoxAnnotation, type MarkerAnnotation } from "./annotate.ts";
 import {
   NAVIGATION_TIMEOUT_MS,
@@ -15,7 +16,7 @@ import { DEFAULT_EMBED_WIDTH } from "./publish.ts";
 
 export interface CaptureFlags {
   output?: string; group?: string; label?: string; size?: string;
-  "full-page"?: boolean; element?: string; "no-element"?: boolean; delay?: string; verbose?: boolean;
+  "full-page"?: boolean; element?: string; "no-element"?: boolean; setup?: string; delay?: string; verbose?: boolean;
   auth?: boolean; "auth-user"?: string; "auth-credentials"?: string;
   "auth-redirect"?: string; "auth-purpose"?: string;
   "no-auth"?: boolean; "no-auth-redirect"?: boolean;
@@ -33,6 +34,7 @@ type CaptureRunOptions = Omit<CaptureOptions, "cookiesPath" | "log">;
 
 export interface ResolvedRunOptions {
   cwd: string;
+  captured: CaptureIdentity;
   capture: CaptureRunOptions;
   auth: { requested: boolean; credentialsPath?: string; user?: string };
   outputPath: string;
@@ -43,7 +45,8 @@ export interface ResolvedRunOptions {
 }
 
 export interface ResolveRunOptionsInput {
-  positional: string;
+  positional?: string;
+  target?: CaptureTarget;
   flags: Readonly<CaptureFlags>;
   profile: Readonly<ProfileConfig>;
   paths: ProfilePaths;
@@ -134,10 +137,14 @@ function requiredSize(value: string): { width: number; height: number } {
 function resolveExpectations(
   flags: Readonly<CaptureFlags>,
   profile: Readonly<ProfileConfig>,
+  target?: CaptureTarget,
 ): Expectations {
   if (flags["no-expect"] === true) return {};
   if (flags["expect-text"] !== undefined || flags["expect-element"] !== undefined) {
     return { text: flags["expect-text"], element: flags["expect-element"] };
+  }
+  if (target?.expectText !== undefined || target?.expectElement !== undefined) {
+    return { text: target.expectText, element: target.expectElement };
   }
   return { text: profile.expectText, element: profile.expectElement };
 }
@@ -145,10 +152,11 @@ function resolveExpectations(
 function resolveAuth(
   flags: Readonly<CaptureFlags>,
   profile: Readonly<ProfileConfig>,
+  target?: CaptureTarget,
 ): ResolvedAuth {
   if (flags["no-auth"] === true) return { requested: false };
   const credentialsPath = flags["auth-credentials"];
-  const user = flags["auth-user"] ?? profile.authUser;
+  const user = flags["auth-user"] ?? target?.authUser ?? profile.authUser;
   const requested = flags.auth === true || credentialsPath !== undefined || user !== undefined;
   if (!requested) return { requested: false };
   return { requested: true, credentialsPath, user };
@@ -157,9 +165,10 @@ function resolveAuth(
 function resolveAuthRedirect(
   flags: Readonly<CaptureFlags>,
   profile: Readonly<ProfileConfig>,
+  target?: CaptureTarget,
 ): string | undefined {
   if (flags["no-auth-redirect"] === true) return undefined;
-  return flags["auth-redirect"] ?? profile.authRedirect;
+  return flags["auth-redirect"] ?? target?.authRedirect ?? profile.authRedirect;
 }
 
 function resolveRunOutput(
@@ -168,6 +177,7 @@ function resolveRunOutput(
   paths: ProfilePaths,
   cwd: string,
   url: string,
+  identity: CaptureIdentity,
   now?: Date,
 ): string {
   const explicitOutput = flags.output !== undefined;
@@ -182,8 +192,19 @@ function resolveRunOutput(
     output,
     group: explicitOutput ? undefined : flags.group ?? profile.group,
     label: explicitOutput ? undefined : flags.label ?? profile.label,
+    identity,
     now,
   });
+}
+
+function effectiveCaptureIdentity(
+  identity: CaptureIdentity,
+  flags: Readonly<CaptureFlags>,
+): CaptureIdentity {
+  if (identity.kind !== "page") return identity;
+  if (flags["no-element"] === true) return { ...identity, element: null };
+  if (flags.element !== undefined) return { kind: "url" };
+  return identity;
 }
 
 function resolvePublish(
@@ -251,26 +272,32 @@ export function resolvePublishDestination(
 
 export function resolveRunOptions(input: ResolveRunOptionsInput): ResolvedRunOptions {
   try {
-    const { flags, profile } = input;
+    const { flags, profile, target } = input;
     validateConflicts(flags);
     validateRemovedFlags(flags);
     validateRequiredTextFlags(flags);
-    const url = resolveCaptureUrl(input.positional, profile);
-    const expectations = resolveExpectations(flags, profile);
-    const auth = resolveAuth(flags, profile);
-    const outputPath = resolveRunOutput(flags, profile, input.paths, input.cwd, url, input.now);
+    const url = target?.url ?? resolveCaptureUrl(input.positional ?? "", profile);
+    const identity = target?.identity ?? { kind: "url" };
+    const expectations = resolveExpectations(flags, profile, target);
+    const auth = resolveAuth(flags, profile, target);
     const publish = resolvePublish(flags, profile);
     const viewport = flags.size === undefined
-      ? { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT }
+      ? target?.viewport ?? { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT }
       : requiredSize(flags.size);
-    const element = flags["no-element"] === true ? undefined : flags.element ?? profile.element;
+    const element = flags["no-element"] === true ? undefined : flags.element ?? target?.element ?? profile.element;
     if (element !== undefined && flags["full-page"] === true) {
       throw new UsageError("--element cannot be combined with --full-page; pass --no-element to capture the whole page");
     }
+    const captured = effectiveCaptureIdentity(identity, flags);
+    const outputPath = resolveRunOutput(flags, profile, input.paths, input.cwd, url, captured, input.now);
+    const targetActions = target?.actions ?? [];
+    const flagActions = flags.act === undefined ? [] : parseActions(flags.act);
+    const actions = targetActions.length === 0 && flagActions.length === 0 ? undefined : [...targetActions, ...flagActions];
     const inspect = resolveInspect(flags);
 
     return {
       cwd: input.cwd,
+      captured,
       capture: {
         url,
         viewport,
@@ -279,10 +306,10 @@ export function resolveRunOptions(input: ResolveRunOptionsInput): ResolvedRunOpt
         delayMs: flags.delay === undefined ? 0 : positiveInteger("delay", flags.delay),
         allowBlank: flags["allow-blank"] === true,
         allowStatus: flags["allow-status"] === true,
-        authRedirect: resolveAuthRedirect(flags, profile),
+        authRedirect: resolveAuthRedirect(flags, profile, target),
         expectText: expectations.text,
         expectElement: expectations.element,
-        actions: flags.act === undefined ? undefined : parseActions(flags.act),
+        actions,
         inspect,
         inspectFooter: flags["inspect-note"],
         verbose: flags.verbose === true,

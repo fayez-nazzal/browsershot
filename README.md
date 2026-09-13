@@ -99,6 +99,38 @@ Routes beginning with `/` append to the saved base path, including hash routes. 
 </details>
 
 <details>
+<summary>Saved pages — capture a known view by name</summary>
+
+A page remembers where a view lives, what must happen before the shot, and which parts of it are worth capturing. Capture one by name, optionally naming a saved element and a saved setup:
+
+```sh
+browsershot page checkout
+browsershot page checkout summary
+browsershot page checkout summary --setup empty
+```
+
+Definitions are written once and then reused:
+
+```sh
+browsershot page add checkout /checkout --auth-user member --expect-element '#checkout-ready'
+browsershot page element checkout summary '#order-summary'
+browsershot page setup checkout empty /checkout?cart=empty
+browsershot page list
+browsershot page show checkout
+browsershot page remove checkout summary
+```
+
+`page add` stores a route or complete URL together with `--auth-user`, `--auth-redirect`, `--expect-element`, `--expect-text`, `--act`, and `--size` as that page's defaults; a stored route beginning with `/` resolves against the saved `baseUrl` when the capture runs, exactly like a quick capture. `page element` gives a CSS selector a name. `page setup` stores the same six settings under a name and may restate the route when the state lives in the URL. `page remove` deletes the page, or only the element or setup named after it.
+
+Page, element, and setup names match `[a-z0-9][a-z0-9_-]*`, and `add`, `element`, `setup`, `list`, `show`, and `remove` are reserved words that no name may use. Registering a name that already exists is a usage error; remove it first. An unknown page, element, or setup name is a usage error that lists the known names for that scope. Definitions live in `.browsershot/pages.json`, beside the project config.
+
+A run starts from the page's defaults, replaces them with the values of a `--setup`, and lets per-run flags win over both; `--act` steps run in that same order, page first, then setup, then per-run. A named element supplies the element selector, `--element` replaces it with a literal selector for one run, and `--no-element` captures the whole page instead.
+
+The default path is `.browsershot/captures/{page}/{element|page}[_{setup}]_{timestamp}.png`, without the `_q-{query}` segment, because the name rather than the URL identifies the capture. `--group`, `--label`, and `--output` behave as they do for any capture, and `captured` in a JSON result reports the page with the element and setup names the run used.
+
+</details>
+
+<details>
 <summary>Filenames and templates</summary>
 
 The default path is `.browsershot/captures/{host}/{route}_{timestamp}.png`; a query adds `_q-{query}`. `--group` inserts safe relative directories before the host, and `--label` adds one safe filename segment. Values are sanitized and shortened as needed.
@@ -146,6 +178,7 @@ Successful `--json` output has these fields:
 | `inspectJsonPath` | Inspection sidecar path, or `null` |
 | `inspected` | Inspection result, or `null` |
 | `publishedUrl` | Public URL, or `null` |
+| `captured` | What the run captured: `{"kind": "url"}` for an ad-hoc capture, or the saved page or library entry identity |
 
 With `--json`, exactly one object is emitted on stdout; human diagnostics use stderr. Without JSON, the absolute PNG path is first on stdout, and successful publishing additionally prints a Markdown embed. JSON success is emitted only after requested sidecar and publishing work succeeds.
 
