@@ -49,6 +49,18 @@ in plaintext. `{route}` uses the pathname of a hash route (a fragment
 beginning with `/`); ordinary anchors are ignored. Do not combine an explicit
 `--output` with `--group` or `--label`.
 
-Read the single JSON object from stdout. Assert on `outputPath`, `sha256`, and `inspected` or `inspectJsonPath`; never read PNG bytes. `--expect-text` and `--expect-element` are pre-action readiness checks. `--inspect-attr` reports an attribute and does not compare it to an expected value. Report the absolute output path, the text or element verified, and any failure exit code.
+Capture a saved page by name when definitions exist: `browsershot page checkout
+summary --setup empty` captures the `summary` element of the `checkout` page in
+its `empty` setup, and `browsershot page checkout` captures the page itself.
+Definitions live in `.browsershot/pages.json`, are written with `browsershot
+page add`, `page element`, and `page setup`, and are listed by `browsershot page
+list` or `page show <page>`. Do not guess a name; an unknown page, element, or
+setup name is a usage error that lists the known names. Page values are
+defaults, a setup replaces the fields it declares, and per-run flags win over
+both. Named captures are written to
+`.browsershot/captures/{page}/{element|page}[_{setup}]_{timestamp}.png` without
+the `_q-{query}` segment.
+
+Read the single JSON object from stdout. Assert on `outputPath`, `sha256`, and `inspected` or `inspectJsonPath`; never read PNG bytes. The seventh field, `captured`, records what the run captured: `{"kind":"url"}` for a URL or quick-route capture, or `{"kind":"page","page":"checkout","element":"summary","setup":"empty"}` for a saved page, where `element` and `setup` are `null` when the run did not name them. `--expect-text` and `--expect-element` are pre-action readiness checks. `--inspect-attr` reports an attribute and does not compare it to an expected value. Report the absolute output path, the text or element verified, and any failure exit code.
 
 See the repository [`README.md`](../../README.md) for uncommon flags and publishing details.

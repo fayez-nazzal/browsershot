@@ -4,6 +4,20 @@ import { parseArgs } from "node:util";
 import packageJson from "../package.json";
 import { DEFAULT_EMBED_WIDTH } from "./publish.ts";
 import { ExitError, EXIT_FAILED, toUsageError, UsageError } from "./exit-codes.ts";
+import {
+  readPages,
+  removePage,
+  removePagePart,
+  requireSavedPage,
+  resolvePageTarget,
+  RESERVED_PAGE_WORDS,
+  savePage,
+  savePageElement,
+  savePageSetup,
+  type PagesFile,
+  type PageSetup,
+  type SavedPage,
+} from "./pages.ts";
 import { profilePaths, readProfile, setProfileValue, unsetProfileValue } from "./profile.ts";
 import { resolveRunOptions, type CaptureFlags } from "./run-options.ts";
 import { runCapture } from "./run-capture.ts";
@@ -31,6 +45,7 @@ USAGE
   browsershot config set <name> [value]
   browsershot config unset <name>
   browsershot config show | path
+  browsershot page <page> [<element>] [--setup <name>]
 
 CAPTURE
   -o, --output <path>       Exact PNG path or template (advanced override)
@@ -144,6 +159,27 @@ CONFIGURATION
   url, auth-user, expect-element, expect-text and auto-open. Reads never
   rewrite the config file and never create the workspace.
 
+SAVED PAGES
+  browsershot page add checkout /checkout --auth-user member
+  browsershot page element checkout summary "#order-summary"
+  browsershot page setup checkout empty /checkout?cart=empty
+  browsershot page list
+  browsershot page show checkout
+  browsershot page remove checkout [element-or-setup]
+
+  Capture by name:
+    browsershot page checkout
+    browsershot page checkout summary
+    browsershot page checkout summary --setup empty
+
+  A page saves a route or URL plus optional defaults (--auth-user, --auth-redirect,
+  --expect-element, --expect-text, --act, --size); named elements save selectors;
+  setups override fields for one state. Definitions live in .browsershot/pages.json,
+  are never shared, and names match [a-z0-9][a-z0-9_-]*. add, element, setup, list,
+  show and remove are reserved. Per-run flags still win; --act steps run page,
+  setup, then per-run steps. Default output groups by name:
+    .browsershot/captures/checkout/summary_empty_2026-09-05_14-30-12.png
+
 META
       --verbose         Playwright progress detail on stderr: phase timings,
                         failed requests, console errors, act step echo
@@ -161,6 +197,7 @@ export function parseCliArgs(argv: string[]) {
       size: { type: "string" },
       element: { type: "string" },
       "no-element": { type: "boolean", default: false },
+      setup: { type: "string" },
       "full-page": { type: "boolean", default: false },
       auth: { type: "boolean", default: false },
       "auth-user": { type: "string" },
@@ -284,7 +321,158 @@ function runConfigCommand(args: string[]): void {
   }
 }
 
+const PAGE_DEFINITION_COMMANDS: readonly string[] = RESERVED_PAGE_WORDS;
+
+const PAGE_SETTING_FLAGS = ["auth-user", "auth-redirect", "expect-element", "expect-text", "act", "size"];
+
+function flagIsSet(value: unknown): boolean {
+  let result = value === true;
+  if (typeof value === "string") {
+    result = value !== "";
+  } else if (Array.isArray(value)) {
+    result = value.length > 0;
+  }
+  return result;
+}
+
+function rejectUnsupportedFlags(values: CaptureFlags, allowed: readonly string[], message: string): void {
+  for (const [name, value] of Object.entries(values)) {
+    if (!allowed.includes(name) && flagIsSet(value)) {
+      throw new UsageError(message);
+    }
+  }
+}
+
+function rejectSetupFlag(values: CaptureFlags): void {
+  if (values.setup !== undefined) {
+    throw new UsageError("--setup is only valid when capturing a page");
+  }
+}
+
+function pageSettingsFromFlags(values: CaptureFlags): PageSetup {
+  const settings: PageSetup = {};
+  if (values["auth-user"] !== undefined) {
+    settings.authUser = values["auth-user"];
+  }
+  if (values["auth-redirect"] !== undefined) {
+    settings.authRedirect = values["auth-redirect"];
+  }
+  if (values["expect-element"] !== undefined) {
+    settings.expectElement = values["expect-element"];
+  }
+  if (values["expect-text"] !== undefined) {
+    settings.expectText = values["expect-text"];
+  }
+  if (values.act !== undefined) {
+    settings.act = values.act;
+  }
+  if (values.size !== undefined) {
+    settings.size = values.size;
+  }
+  return settings;
+}
+
+function pageSetupFromFlags(values: CaptureFlags, route?: string): PageSetup {
+  const setup = pageSettingsFromFlags(values);
+  if (route !== undefined) {
+    setup.route = route;
+  }
+  if (Object.keys(setup).length === 0) {
+    throw new UsageError("page setup needs a route or at least one setting");
+  }
+  return setup;
+}
+function runPageDefinitionCommand(values: CaptureFlags, args: string[]): void {
+  const root = process.cwd();
+  const command = args[0];
+  try {
+    if (command === "add") {
+      if (args.length !== 3) {
+        throw new UsageError("page add needs a name and a route or URL");
+      }
+      rejectSetupFlag(values);
+      rejectUnsupportedFlags(
+        values,
+        PAGE_SETTING_FLAGS,
+        "page add accepts only --auth-user, --auth-redirect, --expect-element, --expect-text, --act, and --size",
+      );
+      const page: SavedPage = { ...pageSettingsFromFlags(values), route: args[2]! };
+      writeStdout(`${JSON.stringify(savePage(root, args[1]!, page))}\n`);
+    } else if (command === "element") {
+      if (args.length !== 4) {
+        throw new UsageError("page element needs a page, a name, and a selector");
+      }
+      rejectUnsupportedFlags(values, [], "page element takes no options");
+      writeStdout(`${JSON.stringify(savePageElement(root, args[1]!, args[2]!, args[3]!))}\n`);
+    } else if (command === "setup") {
+      if (args.length < 3 || args.length > 4) {
+        throw new UsageError("page setup needs a page and a name");
+      }
+      rejectSetupFlag(values);
+      rejectUnsupportedFlags(
+        values,
+        PAGE_SETTING_FLAGS,
+        "page setup accepts only --auth-user, --auth-redirect, --expect-element, --expect-text, --act, and --size",
+      );
+      const setup = pageSetupFromFlags(values, args[3]);
+      writeStdout(`${JSON.stringify(savePageSetup(root, args[1]!, args[2]!, setup))}\n`);
+    } else if (command === "list") {
+      if (args.length !== 1) {
+        throw new UsageError("page list takes no arguments");
+      }
+      writeStdout(`${JSON.stringify(readPages(root), null, 2)}\n`);
+    } else if (command === "show") {
+      if (args.length !== 2) {
+        throw new UsageError("page show needs a page");
+      }
+      writeStdout(`${JSON.stringify(requireSavedPage(readPages(root), args[1]!), null, 2)}\n`);
+    } else {
+      if (args.length < 2 || args.length > 3) {
+        throw new UsageError("page remove needs a page");
+      }
+      let pages: PagesFile;
+      if (args.length === 3) {
+        pages = removePagePart(root, args[1]!, args[2]!);
+      } else {
+        pages = removePage(root, args[1]!);
+      }
+      writeStdout(`${JSON.stringify(pages)}\n`);
+    }
+  } catch (error) {
+    throw toUsageError(error);
+  }
+}
+
+async function runPageCaptureCommand(values: CaptureFlags, args: string[]): Promise<void> {
+  if (args.length > 2) {
+    throw new UsageError(`unexpected extra arguments: ${args.slice(2).join(" ")}`);
+  }
+  if (values.setup !== undefined && values.setup.trim() === "") {
+    throw new UsageError("--setup needs a non-empty value");
+  }
+  const cwd = process.cwd();
+  const profile = readProfile(cwd);
+  const paths = profilePaths(cwd);
+  const target = resolvePageTarget({ root: cwd, page: args[0]!, element: args[1], setup: values.setup, profile });
+  const input = { target, flags: values, profile, paths, cwd };
+  const resolved = resolveRunOptions(input);
+  const io = { stdout: writeStdout, stderr: writeStderr };
+  await runCapture(resolved, io);
+}
+
+async function runPageCommand(values: CaptureFlags, args: string[]): Promise<void> {
+  if (args.length === 0) {
+    throw new UsageError("page needs a command or a page name");
+  }
+  if (PAGE_DEFINITION_COMMANDS.includes(args[0]!)) {
+    runPageDefinitionCommand(values, args);
+  } else {
+    await runPageCaptureCommand(values, args);
+  }
+}
+
 async function runCaptureCommand(values: CaptureFlags, positionals: string[]): Promise<void> {
+  rejectSetupFlag(values);
   if (positionals.length === 0) {
     throw new UsageError("missing <url> or <quick-path> (try: browsershot --help)");
   }
@@ -309,7 +497,7 @@ async function main(): Promise<void> {
   } else if (positionals[0] === "config") {
     runConfigCommand(positionals.slice(1));
   } else if (positionals[0] === "page") {
-    throw new UsageError("page commands are not implemented yet");
+    await runPageCommand(values, positionals.slice(1));
   } else if (positionals[0] === "library") {
     throw new UsageError("library commands are not implemented yet");
   } else {

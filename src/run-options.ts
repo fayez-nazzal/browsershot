@@ -16,7 +16,7 @@ import { DEFAULT_EMBED_WIDTH } from "./publish.ts";
 
 export interface CaptureFlags {
   output?: string; group?: string; label?: string; size?: string;
-  "full-page"?: boolean; element?: string; "no-element"?: boolean; delay?: string; verbose?: boolean;
+  "full-page"?: boolean; element?: string; "no-element"?: boolean; setup?: string; delay?: string; verbose?: boolean;
   auth?: boolean; "auth-user"?: string; "auth-credentials"?: string;
   "auth-redirect"?: string; "auth-purpose"?: string;
   "no-auth"?: boolean; "no-auth-redirect"?: boolean;
