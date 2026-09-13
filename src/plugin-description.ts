@@ -329,9 +329,8 @@ export function readPluginDescription(root: string, name: string): PluginDescrip
   if (existsSync(path)) {
     return parsePluginDescription(readPluginFile(path), name);
   }
-  const builtin = BUILTIN_PLUGIN_DESCRIPTIONS[name];
-  if (builtin !== undefined) {
-    return builtin;
+  if (Object.prototype.hasOwnProperty.call(BUILTIN_PLUGIN_DESCRIPTIONS, name)) {
+    return BUILTIN_PLUGIN_DESCRIPTIONS[name];
   }
   throw new UsageError(`unknown plugin "${name}"; known plugins: ${knownNamesText(knownPluginNames(root))}`);
 }

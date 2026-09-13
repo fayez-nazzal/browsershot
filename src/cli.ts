@@ -319,28 +319,32 @@ function parse(): ReturnType<typeof parseCliArgs> {
   return parsed;
 }
 
-function runConfigCommand(args: string[]): void {
+function runConfigCommand(values: CaptureFlags, args: string[]): void {
   const root = process.cwd();
   const command = args[0];
   try {
     if (command === "set") {
+      rejectCaptureOptions(values, "config set accepts no capture options");
       if (args.length < 2 || args.length > 3) {
         throw new UsageError("config set needs a setting and value");
       }
       const config = setProfileValue(root, args[1]!, args[2]);
       writeStdout(`${JSON.stringify(config)}\n`);
     } else if (command === "unset") {
+      rejectCaptureOptions(values, "config unset accepts no capture options");
       if (args.length !== 2) {
         throw new UsageError("config unset needs a setting");
       }
       const config = unsetProfileValue(root, args[1]!);
       writeStdout(`${JSON.stringify(config)}\n`);
     } else if (command === "show") {
+      rejectCaptureOptions(values, "config show accepts no capture options");
       if (args.length !== 1) {
         throw new UsageError("config show takes no arguments");
       }
       writeStdout(`${JSON.stringify(readProfile(root), null, 2)}\n`);
     } else if (command === "path") {
+      rejectCaptureOptions(values, "config path accepts no capture options");
       if (args.length !== 1) {
         throw new UsageError("config path takes no arguments");
       }
@@ -372,6 +376,17 @@ function rejectUnsupportedFlags(values: CaptureFlags, allowed: readonly string[]
     if (!allowed.includes(name) && flagIsSet(value)) {
       throw new UsageError(message);
     }
+  }
+}
+
+function rejectCaptureOptions(values: CaptureFlags, message: string): void {
+  if (
+    captureFlagPresent(values)
+    || values.plugin !== undefined
+    || values.ready !== undefined
+    || values.scope !== undefined
+  ) {
+    throw new UsageError(message);
   }
 }
 
@@ -449,16 +464,19 @@ function runPageDefinitionCommand(values: CaptureFlags, args: string[]): void {
       const setup = pageSetupFromFlags(values, args[3]);
       writeStdout(`${JSON.stringify(savePageSetup(root, args[1]!, args[2]!, setup))}\n`);
     } else if (command === "list") {
+      rejectCaptureOptions(values, "page list accepts no options");
       if (args.length !== 1) {
         throw new UsageError("page list takes no arguments");
       }
       writeStdout(`${JSON.stringify(readPages(root), null, 2)}\n`);
     } else if (command === "show") {
+      rejectCaptureOptions(values, "page show accepts no options");
       if (args.length !== 2) {
         throw new UsageError("page show needs a page");
       }
       writeStdout(`${JSON.stringify(requireSavedPage(readPages(root), args[1]!), null, 2)}\n`);
     } else {
+      rejectCaptureOptions(values, "page remove accepts no options");
       if (args.length < 2 || args.length > 3) {
         throw new UsageError("page remove needs a page");
       }
@@ -694,7 +712,7 @@ async function main(): Promise<void> {
   } else if (values.version) {
     writeStdout(`${VERSION}\n`);
   } else if (positionals[0] === "config") {
-    runConfigCommand(positionals.slice(1));
+    runConfigCommand(values, positionals.slice(1));
   } else if (positionals[0] === "page") {
     await runPageCommand(values, positionals.slice(1));
   } else if (positionals[0] === "library") {
