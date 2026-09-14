@@ -15,6 +15,7 @@ import { resolveQuickUrl, type ProfilePaths } from "./profile.ts";
 import { DEFAULT_EMBED_WIDTH } from "./publish.ts";
 
 export interface CaptureFlags {
+  output?: string; group?: string; label?: string; size?: string;
   "full-page"?: boolean; element?: string; "no-element"?: boolean; setup?: string; delay?: string; verbose?: boolean; "with-errors"?: boolean; "no-with-errors"?: boolean;
   auth?: boolean; "auth-user"?: string; "auth-credentials"?: string;
   "auth-redirect"?: string; "auth-purpose"?: string;
@@ -24,8 +25,8 @@ export interface CaptureFlags {
   act?: string; inspect?: string; "inspect-attr"?: string;
   "inspect-json"?: string; "inspect-note"?: string;
   box?: string[]; marker?: string[];
-  json?: boolean; "no-json"?: boolean;
-  "no-with-errors"?: boolean;
+  json?: boolean; "no-json"?: boolean; "no-auto-open"?: boolean;
+  "auto-open"?: boolean;
   publish?: string; "publish-size"?: string; "publish-label"?: string;
   plugin?: string; ready?: string; scope?: string;
 }
