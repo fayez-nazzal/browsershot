@@ -155,8 +155,9 @@ PUBLISHING RULES
 OUTPUT AND ERRORS
   Without --json, the absolute PNG path is the first stdout line. With --json,
   stdout is exactly one object with outputPath, bytes, sha256, inspectJsonPath,
-  consoleErrorsJsonPath, inspected and publishedUrl. --with-errors writes
-  <png basename>.console.json beside the PNG.
+  consoleErrorsJsonPath, consoleErrors, inspected and publishedUrl. --with-errors
+  writes <png basename>.console.json beside the PNG; the errors are also inline
+  in the JSON result. Without --json, formatted errors are printed on stderr.
   Human diagnostics are on stderr.
 
   Exit 0  capture written
@@ -168,10 +169,11 @@ OUTPUT AND ERRORS
 
 CONFIGURATION
   Canonical saved names: baseUrl, authUser, authRedirect, expectElement,
-  expectText, element, output, group, label, json, autoOpen and publish.
+  expectText, element, output, group, label, json, autoOpen, withErrors and
+  publish. Use "config set withErrors" to enable error collection by default.
   Kebab-case aliases are accepted for set and unset, including base-url,
-  url, auth-user, expect-element, expect-text and auto-open. Reads never
-  rewrite the config file and never create the workspace.
+  url, auth-user, expect-element, expect-text, auto-open and with-errors.
+  Reads never rewrite the config file and never create the workspace.
 
 SAVED PAGES
   browsershot page add checkout /checkout --auth-user member

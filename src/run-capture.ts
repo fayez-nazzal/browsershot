@@ -18,6 +18,7 @@ export interface SuccessSummary {
   sha256: string | null;
   inspectJsonPath: string | null;
   consoleErrorsJsonPath: string | null;
+  consoleErrors: ConsoleErrorRecord[] | null;
   inspected: unknown;
   publishedUrl: string | null;
   captured: CaptureIdentity;
@@ -50,6 +51,7 @@ interface PreparedAuth {
   jarPath: string | undefined;
   retryCredentials: { credentialsPath: string; user?: string } | null;
 }
+
 export function emptySuccess(): SuccessSummary {
   return {
     outputPath: null,
@@ -57,6 +59,7 @@ export function emptySuccess(): SuccessSummary {
     sha256: null,
     inspectJsonPath: null,
     consoleErrorsJsonPath: null,
+    consoleErrors: null,
     inspected: null,
     publishedUrl: null,
     captured: { kind: "url" },
@@ -95,6 +98,25 @@ export function inspectSummary(record: ElementRecord, attr?: string): string {
     summary = `${summary} ${attr}=${value}`;
   }
   return summary;
+}
+
+function formatConsoleErrors(errors: ConsoleErrorRecord[]): string {
+  const lines = [`browsershot: console errors (${errors.length})`];
+  for (const error of errors) {
+    let location = "";
+    if (error.url != null) {
+      location = ` at ${error.url}`;
+      if (error.line != null) location += `:${error.line}`;
+      if (error.column != null) location += `:${error.column}`;
+    }
+    lines.push(`  [${error.kind}] ${error.text}${location}`);
+    if (error.kind === "pageerror" && error.stack != null && error.stack !== error.text) {
+      for (const stackLine of error.stack.split("\n")) {
+        lines.push(`    ${stackLine}`);
+      }
+    }
+  }
+  return `${lines.join("\n")}\n`;
 }
 
 function withDefaults(overrides: Partial<RunCaptureDependencies>): RunCaptureDependencies {
@@ -194,6 +216,7 @@ function writeAndReport(
   success.bytes = png.length;
   success.sha256 = sha256Hex(png);
   success.captured = options.captured;
+  success.consoleErrors = options.capture.withErrors === true ? consoleErrors ?? [] : null;
   io.stderr(`browsershot: wrote ${out} (${png.length} bytes)\n`);
   io.stderr(`browsershot: sha256 ${success.sha256}\n`);
   if (options.report.json === false) {
@@ -225,6 +248,9 @@ function writeAndReport(
     }
     success.consoleErrorsJsonPath = sidecarPath;
     io.stderr(`browsershot: console errors json ${sidecarPath}\n`);
+  }
+  if (options.capture.withErrors === true && options.report.json === false) {
+    io.stderr(formatConsoleErrors(consoleErrors ?? []));
   }
   if (options.publish != null) {
     let pngLabel = labelFromPath(out);

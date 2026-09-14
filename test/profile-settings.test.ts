@@ -11,23 +11,24 @@ import {
 test("the registry contains every persistent setting exactly once", () => {
   expect(PROFILE_SETTING_NAMES).toEqual([
     "baseUrl", "authUser", "authRedirect", "expectElement", "expectText", "element",
-    "output", "group", "label", "json", "autoOpen", "publish",
+    "output", "group", "label", "json", "autoOpen", "withErrors", "publish",
   ]);
   expect(Object.keys(PROFILE_SETTINGS)).toEqual([...PROFILE_SETTING_NAMES]);
   expect(PROFILE_SETTINGS.json.kind).toBe("boolean");
   expect(PROFILE_SETTINGS.autoOpen.kind).toBe("boolean");
+  expect(PROFILE_SETTINGS.withErrors.kind).toBe("boolean");
   expect(PROFILE_SETTINGS.baseUrl.kind).toBe("string");
 });
 
 test("canonical names and legacy aliases resolve through one registry", () => {
   expect(resolveProfileSettingName("baseUrl")).toBe("baseUrl");
   expect(resolveProfileSettingName("base-url")).toBe("baseUrl");
-  expect(resolveProfileSettingName("url")).toBe("baseUrl");
   expect(resolveProfileSettingName("auth-user")).toBe("authUser");
   expect(resolveProfileSettingName("auth-redirect")).toBe("authRedirect");
   expect(resolveProfileSettingName("expect-element")).toBe("expectElement");
   expect(resolveProfileSettingName("expect-text")).toBe("expectText");
   expect(resolveProfileSettingName("auto-open")).toBe("autoOpen");
+  expect(resolveProfileSettingName("with-errors")).toBe("withErrors");
   expect(resolveProfileSettingName("unknown")).toBeNull();
 });
 

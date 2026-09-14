@@ -314,7 +314,7 @@ export function resolveRunOptions(input: ResolveRunOptionsInput): ResolvedRunOpt
         inspect,
         inspectFooter: flags["inspect-note"],
         verbose: flags.verbose === true,
-        withErrors: flags["with-errors"] === true,
+        withErrors: flags["with-errors"] === true || profile.withErrors === true,
       },
       auth,
       outputPath,

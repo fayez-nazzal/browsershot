@@ -40,9 +40,10 @@ Use flags when a capture needs more than a simple route:
 - `--no-auth`, `--no-expect`, `--no-json`, and `--no-auto-open` disable saved
   settings for one capture.
 - `--with-errors` writes browser console errors and uncaught page exceptions to
-  `<png basename>.console.json` beside the PNG. The JSON result exposes this
-  path as `consoleErrorsJsonPath`; it is `null` unless the flag is enabled.
-- `--json` prints one machine-readable result. Use it in scripts.
+  `<png basename>.console.json` beside the PNG. The JSON result exposes the
+  same records inline as `consoleErrors` and the sidecar path as
+  `consoleErrorsJsonPath`; it is `null` unless the flag or saved `withErrors`
+  setting is enabled. `browsershot config set withErrors` enables it by default.
 - `--auth` captures an authenticated page using `authstate`.
 - `--publish` sends the PNG to a saved or explicit destination.
 - `--group` collects related captures under a directory, such as `PR-123`.

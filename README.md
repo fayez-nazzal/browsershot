@@ -90,7 +90,7 @@ browsershot config unset expectElement
 browsershot config path
 ```
 
-Canonical settings are `baseUrl`, `authUser`, `authRedirect`, `expectElement`, `expectText`, `element`, `output`, `group`, `label`, `json`, `autoOpen`, and `publish`. Accepted aliases are `base-url`, `url`, `auth-user`, `auth-redirect`, `expect-element`, `expect-text`, and `auto-open`. Legacy JSON `url` is read as `baseUrl`; reads do not rewrite or create the workspace, and explicit writes use canonical names.
+Canonical settings are `baseUrl`, `authUser`, `authRedirect`, `expectElement`, `expectText`, `element`, `output`, `group`, `label`, `json`, `autoOpen`, `withErrors`, and `publish`. Accepted aliases are `base-url`, `url`, `auth-user`, `auth-redirect`, `expect-element`, `expect-text`, `auto-open`, and `with-errors`. Legacy JSON `url` is read as `baseUrl`; reads do not rewrite or create the workspace, and explicit writes use canonical names. `browsershot config set withErrors` enables error collection for captures by default.
 
 Flags override saved defaults. Per-run disabling flags include `--no-auth`, `--no-auth-redirect`, `--no-expect`, `--no-element`, `--no-json`, and `--no-auto-open`. Positive and negative flags for the same setting conflict. Explicit `--expect-text` or `--expect-element` replaces the entire saved expectation set; both explicit checks must pass when both are supplied. `--no-expect` disables content assertions, not HTTP or blank-page guards.
 
@@ -235,11 +235,12 @@ Successful `--json` output has these fields:
 | `sha256` | PNG SHA-256 digest |
 | `inspectJsonPath` | Inspection sidecar path, or `null` |
 | `consoleErrorsJsonPath` | Console-error sidecar path, or `null` |
+| `consoleErrors` | Collected console and page errors when enabled, or `null` |
 | `inspected` | Inspection result, or `null` |
 | `publishedUrl` | Public URL, or `null` |
 | `captured` | What the run captured: `{"kind": "url"}` for an ad-hoc capture, or the saved page or library entry identity |
 
-With `--json`, exactly one object is emitted on stdout; human diagnostics use stderr. Without JSON, the absolute PNG path is first on stdout, and successful publishing additionally prints a Markdown embed. JSON success is emitted only after requested sidecar and publishing work succeeds.
+With `--json`, exactly one object is emitted on stdout; when error collection is enabled, `consoleErrors` is included inline. Human diagnostics use stderr; without JSON, formatted collected errors are printed there while the absolute PNG path remains first on stdout. Successful publishing additionally prints a Markdown embed. JSON success is emitted only after requested sidecar and publishing work succeeds.
 
 Exit codes: `0` success; `1` capture or page-guard failure; `2` usage, conflicting flags, or invalid config; `3` Authstate or credentials environment failure; `4` PNG written but sidecar failed; `5` PNG written but publishing failed. In the last two cases the PNG remains and there is no successful JSON result.
 
