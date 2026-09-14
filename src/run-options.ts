@@ -304,7 +304,9 @@ export function resolveRunOptions(input: ResolveRunOptionsInput): ResolvedRunOpt
         viewport,
         element,
         fullPage: flags["full-page"] === true,
-        delayMs: flags.delay === undefined ? 0 : positiveInteger("delay", flags.delay),
+        delayMs: flags.delay === undefined
+          ? profile.delay ?? 0
+          : positiveInteger("delay", flags.delay),
         allowBlank: flags["allow-blank"] === true,
         allowStatus: flags["allow-status"] === true,
         authRedirect: resolveAuthRedirect(flags, profile, target),

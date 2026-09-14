@@ -59,6 +59,11 @@ test("saved defaults and explicit replacements resolve once", () => {
   expect(result.publish).toEqual({ destination: "gdrive:explicit/", size: 1200, label: undefined });
   expect(result.report).toEqual({ json: true, autoOpen: true });
 });
+
+test("saved delay applies when no per-run delay is provided", () => {
+  expect(resolve("https://example.com", {}, { delay: 3000 }).capture.delayMs).toBe(3000);
+  expect(resolve("https://example.com", { delay: "500" }, { delay: 3000 }).capture.delayMs).toBe(500);
+});
 test("saved withErrors enables error collection without a CLI flag", () => {
   expect(resolve("https://example.com", {}, { withErrors: true }).capture.withErrors).toBe(true);
   expect(resolve("https://example.com", { "with-errors": true }).capture.withErrors).toBe(true);

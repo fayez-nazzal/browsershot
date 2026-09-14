@@ -35,7 +35,7 @@ centered on the hovered element's bottom edge. Hovered links also show a
 black-and-white URL preview centered directly below the cursor; the preview
 is ellipsized for long URLs and stays within the capture bounds.
 
-Complete URLs do not require `.browsershot/config.json`. Quick paths require a known saved `baseUrl`; do not guess it. The legacy saved key `url` is accepted. A quick path changes only URL resolution; every option behaves the same for a complete URL, and malformed saved config is a usage error for either form, before capture starts. Saved auth, assertions, output, JSON, and viewer settings can be overridden for one run with `--no-auth`, `--no-expect`, `--output`, `--no-json`, or `--no-auto-open`.
+Complete URLs do not require `.browsershot/config.json`. Quick paths require a known saved `baseUrl`; do not guess it. The legacy saved key `url` is accepted. A quick path changes only URL resolution; every option behaves the same for a complete URL, and malformed saved config is a usage error for either form, before capture starts. Save settling time with `browsershot config set delay 3000`; an explicit `--delay` overrides it for one run. Saved auth, assertions, output, JSON, and viewer settings can be overridden for one run with `--no-auth`, `--no-expect`, `--output`, `--no-json`, or `--no-auto-open`.
 
 Captures default to
 `.browsershot/captures/{host}/{route}_{timestamp}.png`, plus a `_q-{query}`
