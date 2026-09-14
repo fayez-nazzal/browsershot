@@ -222,19 +222,19 @@ Actions are per-run and use semicolon-separated `kind:value` steps. Supported ki
 ```sh
 browsershot /settings --act 'focus:#name;type:Ada;press:Tab;wait:300'
 ```
-
 `--inspect` records the first matching element. `--inspect-attr` highlights an attribute, `--inspect-json <path>` chooses the sidecar path, and `--inspect-note <text>` adds a note. A final hover can add a cursor/link preview.
 
+`--with-errors` collects browser console errors and uncaught page exceptions during the capture, including readiness, actions, inspection, and screenshot preparation. It writes `<png basename>.console.json` beside the PNG, such as `capture.console.json`; for an explicit non-`.png` output, the final extension is replaced with `.console.json`. Warnings, informational console messages, and failed requests are excluded.
 Repeat `--box x,y,w,h[,color]` and `--marker x,y[,color]` for coordinate evidence. Coordinates use post-scale PNG pixels and a top-left origin. These annotations require macOS because they use `osascript`.
 
 Successful `--json` output has these fields:
 
 | Field | Meaning |
-| --- | --- |
 | `outputPath` | Absolute PNG path |
 | `bytes` | PNG byte count |
 | `sha256` | PNG SHA-256 digest |
 | `inspectJsonPath` | Inspection sidecar path, or `null` |
+| `consoleErrorsJsonPath` | Console-error sidecar path, or `null` |
 | `inspected` | Inspection result, or `null` |
 | `publishedUrl` | Public URL, or `null` |
 | `captured` | What the run captured: `{"kind": "url"}` for an ad-hoc capture, or the saved page or library entry identity |

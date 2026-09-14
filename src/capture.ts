@@ -22,11 +22,23 @@ export interface CaptureOptions {
   expectElement?: string;
   log?: (message: string) => void;
   verbose?: boolean;
+  withErrors?: boolean;
+}
+
+export interface ConsoleErrorRecord {
+  kind: "console" | "pageerror";
+  text: string;
+  url?: string;
+  line?: number;
+  column?: number;
+  message?: string;
+  stack?: string;
 }
 
 export interface CaptureResult {
   png: Uint8Array;
   inspected: ElementRecord | null;
+  consoleErrors?: ConsoleErrorRecord[];
 }
 
 export class AuthenticationCaptureFailure extends Error {
@@ -216,13 +228,29 @@ async function captureScreenshot(page: Page, o: CaptureOptions): Promise<Uint8Ar
   }
 }
 
-
 export async function capture(o: CaptureOptions, deps: CaptureDeps = defaultCaptureDeps): Promise<CaptureResult> {
   const session = await openSession(o, deps);
   let png: Uint8Array;
   let inspected: ElementRecord | null = null;
+  const consoleErrors: ConsoleErrorRecord[] = [];
   try {
     const page = await session.context.newPage();
+    if (o.withErrors === true) {
+      page.on("console", (msg) => {
+        if (msg.type() !== "error") return;
+        const location = msg.location();
+        const record: ConsoleErrorRecord = { kind: "console", text: msg.text() };
+        if (location.url !== "") record.url = location.url;
+        if (location.lineNumber >= 0) record.line = location.lineNumber;
+        if (location.columnNumber >= 0) record.column = location.columnNumber;
+        consoleErrors.push(record);
+      });
+      page.on("pageerror", (error) => {
+        const record: ConsoleErrorRecord = { kind: "pageerror", text: error.message, message: error.message };
+        if (error.stack !== undefined) record.stack = error.stack;
+        consoleErrors.push(record);
+      });
+    }
     if (o.verbose === true) {
       page.on("console", (msg) => {
         if (msg.type() === "error") {
@@ -246,5 +274,7 @@ export async function capture(o: CaptureOptions, deps: CaptureDeps = defaultCapt
   } finally {
     await closeSession(session);
   }
-  return { png, inspected };
+  const result: CaptureResult = { png, inspected };
+  if (o.withErrors === true) result.consoleErrors = consoleErrors;
+  return result;
 }
