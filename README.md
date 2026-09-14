@@ -150,6 +150,65 @@ An explicit output is the expanded path; it does not promise to append `.png`. E
 </details>
 
 <details>
+<summary>Component libraries — capture one example by name</summary>
+
+A library is a running component environment — a Storybook or Ladle server you already started — that Browsershot reads through that environment's own catalog. Register it once, then capture any example by name:
+
+```sh
+browsershot library add ui http://localhost:6006 --plugin storybook
+browsershot library ui button--primary
+```
+
+Definitions live in `.browsershot/libraries.json`. The management commands print JSON on stdout:
+
+```sh
+browsershot library list
+browsershot library list ui
+browsershot library show ui
+browsershot library refresh ui
+browsershot library remove ui
+```
+
+`list` without a name prints the saved definitions, and `list <library>` prints the known entries, fetching the catalog when nothing is cached. `show` prints one definition, `refresh` refetches the catalog, and `remove` drops the definition together with its cached catalog. Library names match `[a-z0-9][a-z0-9_-]*`; `add`, `list`, `show`, `refresh`, and `remove` are reserved; the base address must be absolute; and re-registering an existing name fails until that name is removed.
+
+Built-in plugins are `storybook` and `ladle`. A file at `.browsershot/plugins/<name>.json` describes another environment, or replaces a built-in of the same name:
+
+```json
+{
+  "version": 1,
+  "name": "storybook",
+  "discover": {
+    "http": { "path": "/index.json" },
+    "entries": "entries",
+    "filter": { "type": "story" },
+    "id": "id",
+    "group": "title",
+    "label": "name"
+  },
+  "address": "/iframe.html?id={id}&viewMode=story",
+  "ready": "#storybook-root"
+}
+```
+
+A plugin is data; nothing in it is executed. `discover` states exactly one of `http` (a `path` joined to the library's base address, or a complete `url`) or `files` (a `glob` with an optional `root`). `entries` is a dotted path to the catalog's array or object map, `id`, `group`, and `label` are dotted paths inside one entry where `$key` means the map key, and `filter` keeps entries whose fields equal the listed values. `address` is a template over `{base}`, `{id}`, `{group}`, and `{label}`; an unknown placeholder is an error. `ready` is the selector that proves the example rendered. Optional `scope` narrows the shot when one address renders more than the wanted example, and optional `auth` names a header and an environment variable, such as `{"header": "Authorization", "valueFrom": "env:CATALOG_TOKEN"}`. Only `env:` references are accepted: the value is read when the catalog is fetched and is never written into the workspace.
+
+`--ready` and `--scope` on `add` replace the plugin's selectors for one library. Use the environment's own selectors in place of these:
+
+```sh
+browsershot library add design http://localhost:61000 --plugin ladle --scope '#preview' --ready '#preview .rendered'
+```
+
+An entry name matches the catalog `id` exactly, or else `group/name` or the name alone, case-insensitively. Several matches are a usage error listing the candidates; no match is chosen silently. A name that matches nothing refetches the catalog once and retries, so an example added moments ago is capturable without a manual refresh. Catalogs cache at `.browsershot/cache/<library>.json` and do not expire.
+
+The default path is `.browsershot/captures/{library}/{entry}_{timestamp}.png`, with no query segment; `--group`, `--label`, and `--output` behave as they do for any capture. A scoped library captures that element, so it cannot be combined with `--full-page`; `--no-element` captures the whole page instead.
+
+Unknown library, unknown entry, ambiguous entry, a malformed libraries or plugin file, and `--plugin`, `--ready`, or `--scope` outside `library add` are usage errors (exit `2`); an unknown library lists the known libraries and an ambiguous name lists the candidates. An unreachable catalog exits `1`, naming the library and the address tried. A catalog that rejects the credentials, or an environment variable that is unset, exits `3`, naming that variable.
+
+Histoire has no built-in description, because its single-variant URL form is unconfirmed and a guessed address would capture the wrong thing. Save a page pointing at the variant's URL instead.
+
+</details>
+
+<details>
 <summary>Readiness, actions, inspection, and output</summary>
 
 The default viewport is `1440x900` at 2× scale. Navigation waits for the load event with a 30-second timeout; `--delay <ms>` adds settling time.

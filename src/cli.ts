@@ -17,6 +17,15 @@ import {
   type PageSetup,
   type SavedPage,
 } from "./pages.ts";
+import {
+  fetchLibraryCatalog,
+  readCachedCatalog,
+  readLibraries,
+  readResolvedLibrary,
+  removeLibrary,
+  resolveLibraryTarget,
+  saveLibrary,
+} from "./libraries.ts";
 import { profilePaths, readProfile, setProfileValue, unsetProfileValue } from "./profile.ts";
 import { resolveRunOptions, type CaptureFlags } from "./run-options.ts";
 import { runCapture } from "./run-capture.ts";
@@ -45,6 +54,8 @@ USAGE
   browsershot config unset <name>
   browsershot config show | path
   browsershot page <page> [<element>] [--setup <name>]
+  browsershot library <library> <entry>
+  browsershot library add <library> <base-url> --plugin <name>
 
 CAPTURE
   -o, --output <path>       Exact PNG path or template (advanced override)
@@ -179,6 +190,24 @@ SAVED PAGES
   setup, then per-run steps. Default output groups by name:
     .browsershot/captures/checkout/summary_empty_2026-09-05_14-30-12.png
 
+COMPONENT LIBRARIES
+  browsershot library add ui https://storybook.example --plugin storybook
+  browsershot library list ui
+  browsershot library show ui
+  browsershot library refresh ui
+  browsershot library remove ui
+
+  Capture one example by name:
+    browsershot library ui button--primary
+    browsershot library ui "controls/button" --label hover
+
+  A library is a running component environment described by a plugin (built-in:
+  storybook, ladle; workspace overrides in .browsershot/plugins/<name>.json).
+  Entries resolve by exact id, then case-insensitive group/name; ambiguous names
+  are errors. Catalogs cache in .browsershot/cache/<library>.json and refresh on
+  a miss. Readiness comes from the plugin's selector; --scope or --ready on
+  library add override it. Default output groups by library:
+    .browsershot/captures/ui/button--primary_2026-09-05_14-30-12.png
 META
       --verbose         Playwright progress detail on stderr: phase timings,
                         failed requests, console errors, act step echo
@@ -225,6 +254,9 @@ export function parseCliArgs(argv: string[]) {
       publish: { type: "string" },
       "publish-size": { type: "string" },
       "publish-label": { type: "string" },
+      plugin: { type: "string" },
+      ready: { type: "string" },
+      scope: { type: "string" },
       help: { type: "boolean", short: "h", default: false },
       version: { type: "boolean", short: "v", default: false },
       "auto-open": { type: "boolean", default: false },
@@ -286,28 +318,32 @@ function parse(): ReturnType<typeof parseCliArgs> {
   return parsed;
 }
 
-function runConfigCommand(args: string[]): void {
+function runConfigCommand(values: CaptureFlags, args: string[]): void {
   const root = process.cwd();
   const command = args[0];
   try {
     if (command === "set") {
+      rejectCaptureOptions(values, "config set accepts no capture options");
       if (args.length < 2 || args.length > 3) {
         throw new UsageError("config set needs a setting and value");
       }
       const config = setProfileValue(root, args[1]!, args[2]);
       writeStdout(`${JSON.stringify(config)}\n`);
     } else if (command === "unset") {
+      rejectCaptureOptions(values, "config unset accepts no capture options");
       if (args.length !== 2) {
         throw new UsageError("config unset needs a setting");
       }
       const config = unsetProfileValue(root, args[1]!);
       writeStdout(`${JSON.stringify(config)}\n`);
     } else if (command === "show") {
+      rejectCaptureOptions(values, "config show accepts no capture options");
       if (args.length !== 1) {
         throw new UsageError("config show takes no arguments");
       }
       writeStdout(`${JSON.stringify(readProfile(root), null, 2)}\n`);
     } else if (command === "path") {
+      rejectCaptureOptions(values, "config path accepts no capture options");
       if (args.length !== 1) {
         throw new UsageError("config path takes no arguments");
       }
@@ -349,6 +385,17 @@ function rejectUnsupportedFlags(values: CaptureFlags, allowed: readonly string[]
     if (!allowed.includes(name) && flagIsSet(value)) {
       throw new UsageError(message);
     }
+  }
+}
+
+function rejectCaptureOptions(values: CaptureFlags, message: string): void {
+  if (
+    captureFlagPresent(values)
+    || values.plugin !== undefined
+    || values.ready !== undefined
+    || values.scope !== undefined
+  ) {
+    throw new UsageError(message);
   }
 }
 
@@ -426,16 +473,19 @@ function runPageDefinitionCommand(values: CaptureFlags, args: string[]): void {
       const setup = pageSetupFromFlags(values, args[3]);
       writeStdout(`${JSON.stringify(savePageSetup(root, args[1]!, args[2]!, setup))}\n`);
     } else if (command === "list") {
+      rejectCaptureOptions(values, "page list accepts no options");
       if (args.length !== 1) {
         throw new UsageError("page list takes no arguments");
       }
       writeStdout(`${JSON.stringify(readPages(root), null, 2)}\n`);
     } else if (command === "show") {
+      rejectCaptureOptions(values, "page show accepts no options");
       if (args.length !== 2) {
         throw new UsageError("page show needs a page");
       }
       writeStdout(`${JSON.stringify(readPageDefinition(root, args[1]!), null, 2)}\n`);
     } else {
+      rejectCaptureOptions(values, "page remove accepts no options");
       if (args.length < 2 || args.length > 3) {
         throw new UsageError("page remove needs a page");
       }
@@ -453,6 +503,7 @@ function runPageDefinitionCommand(values: CaptureFlags, args: string[]): void {
 }
 
 async function runPageCaptureCommand(values: CaptureFlags, args: string[]): Promise<void> {
+  rejectLibraryFlags(values);
   if (args.length > 2) {
     throw new UsageError(`unexpected extra arguments: ${args.slice(2).join(" ")}`);
   }
@@ -482,6 +533,7 @@ async function runPageCommand(values: CaptureFlags, args: string[]): Promise<voi
 
 async function runCaptureCommand(values: CaptureFlags, positionals: string[]): Promise<void> {
   rejectSetupFlag(values);
+  rejectLibraryFlags(values);
   if (positionals.length === 0) {
     throw new UsageError("missing <url> or <quick-path> (try: browsershot --help)");
   }
@@ -497,6 +549,171 @@ async function runCaptureCommand(values: CaptureFlags, positionals: string[]): P
   await runCapture(resolved, io);
 }
 
+function rejectLibraryFlags(values: CaptureFlags): void {
+  if (values.plugin !== undefined) {
+    throw new UsageError("--plugin is only valid with library add");
+  }
+  if (values.ready !== undefined) {
+    throw new UsageError("--ready is only valid with library add");
+  }
+  if (values.scope !== undefined) {
+    throw new UsageError("--scope is only valid with library add");
+  }
+}
+
+function captureFlagPresent(values: CaptureFlags): boolean {
+  const text = (
+    values.output !== undefined || values.group !== undefined || values.label !== undefined
+    || values.size !== undefined || values.element !== undefined || values.delay !== undefined
+    || values.setup !== undefined || values.act !== undefined || values.inspect !== undefined
+    || values.publish !== undefined || values["auth-user"] !== undefined
+    || values["auth-credentials"] !== undefined || values["auth-redirect"] !== undefined
+    || values["auth-purpose"] !== undefined || values["expect-text"] !== undefined
+    || values["expect-element"] !== undefined || values["inspect-attr"] !== undefined
+    || values["inspect-json"] !== undefined || values["inspect-note"] !== undefined
+    || values["publish-size"] !== undefined || values["publish-label"] !== undefined
+  );
+  const toggles = (
+    values.auth === true || values.json === true || values.verbose === true
+    || values["full-page"] === true || values["allow-blank"] === true || values["allow-status"] === true
+    || values["auto-open"] === true || values["no-element"] === true || values["no-expect"] === true
+    || values["no-auth"] === true || values["no-auth-redirect"] === true || values["no-json"] === true
+    || values["no-auto-open"] === true
+  );
+  const repeats = (values.box?.length ?? 0) > 0 || (values.marker?.length ?? 0) > 0;
+  return text || toggles || repeats;
+}
+
+function isAbsoluteUrl(value: string): boolean {
+  let absolute = true;
+  try {
+    new URL(value);
+  } catch {
+    absolute = false;
+  }
+  return absolute;
+}
+
+function knownNames(names: string[]): string {
+  const sorted = [...names].sort();
+  if (sorted.length === 0) {
+    return "(none)";
+  }
+  return sorted.join(", ");
+}
+
+async function runLibraryCommand(values: CaptureFlags, args: string[]): Promise<void> {
+  const command = args[0];
+  if (command === undefined) {
+    throw new UsageError("library needs a command or a library name");
+  }
+  if (command === "add") {
+    runLibraryAddCommand(values, args.slice(1));
+  } else {
+    rejectLibraryFlags(values);
+    if (command === "list") {
+      rejectLibraryManagementOptions(values, command);
+      await runLibraryListCommand(args.slice(1));
+    } else if (command === "show") {
+      rejectLibraryManagementOptions(values, command);
+      runLibraryShowCommand(args.slice(1));
+    } else if (command === "refresh") {
+      rejectLibraryManagementOptions(values, command);
+      await runLibraryRefreshCommand(args.slice(1));
+    } else if (command === "remove") {
+      rejectLibraryManagementOptions(values, command);
+      runLibraryRemoveCommand(args.slice(1));
+    } else {
+      await runLibraryCaptureCommand(values, args);
+    }
+  }
+}
+
+function rejectLibraryManagementOptions(values: CaptureFlags, command: string): void {
+  if (captureFlagPresent(values)) {
+    throw new UsageError(`library ${command} accepts no options`);
+  }
+}
+
+function runLibraryAddCommand(values: CaptureFlags, args: string[]): void {
+  if (args.length !== 2) {
+    throw new UsageError("library add needs a name and a base URL");
+  }
+  if (values.plugin === undefined) {
+    throw new UsageError("library add needs --plugin <name>");
+  }
+  if (!isAbsoluteUrl(args[1]!)) {
+    throw new UsageError(`library add needs an absolute base URL, got "${args[1]!}"`);
+  }
+  if (captureFlagPresent(values)) {
+    throw new UsageError("library add accepts only --plugin, --ready, and --scope");
+  }
+  const definition = { baseUrl: args[1]!, plugin: values.plugin, ready: values.ready, scope: values.scope };
+  const file = saveLibrary(process.cwd(), args[0]!, definition);
+  writeStdout(`${JSON.stringify(file)}\n`);
+}
+
+async function runLibraryListCommand(args: string[]): Promise<void> {
+  if (args.length > 1) {
+    throw new UsageError("library list takes one library at most");
+  }
+  const root = process.cwd();
+  if (args.length === 0) {
+    writeStdout(`${JSON.stringify(readLibraries(root), null, 2)}\n`);
+  } else {
+    const name = args[0]!;
+    readResolvedLibrary(root, name);
+    const cached = readCachedCatalog(root, name);
+    const entries = cached ?? await fetchLibraryCatalog({ root, name });
+    writeStdout(`${JSON.stringify(entries, null, 2)}\n`);
+  }
+}
+
+function runLibraryShowCommand(args: string[]): void {
+  if (args.length !== 1) {
+    throw new UsageError("library show needs a library");
+  }
+  const name = args[0]!;
+  const file = readLibraries(process.cwd());
+  const definition = file.libraries[name];
+  if (definition === undefined) {
+    throw new UsageError(`unknown library "${name}"; known libraries: ${knownNames(Object.keys(file.libraries))}`);
+  }
+  writeStdout(`${JSON.stringify(definition, null, 2)}\n`);
+}
+
+async function runLibraryRefreshCommand(args: string[]): Promise<void> {
+  if (args.length !== 1) {
+    throw new UsageError("library refresh needs a library");
+  }
+  const root = process.cwd();
+  const entries = await fetchLibraryCatalog({ root, name: args[0]! });
+  writeStdout(`${JSON.stringify(entries, null, 2)}\n`);
+}
+
+function runLibraryRemoveCommand(args: string[]): void {
+  if (args.length !== 1) {
+    throw new UsageError("library remove needs a library");
+  }
+  const file = removeLibrary(process.cwd(), args[0]!);
+  writeStdout(`${JSON.stringify(file)}\n`);
+}
+
+async function runLibraryCaptureCommand(values: CaptureFlags, args: string[]): Promise<void> {
+  if (args.length !== 2) {
+    throw new UsageError("library capture needs a library and an entry");
+  }
+  rejectSetupFlag(values);
+  const cwd = process.cwd();
+  const target = await resolveLibraryTarget({ library: args[0]!, entry: args[1]!, root: cwd });
+  const profile = readProfile(cwd);
+  const paths = profilePaths(cwd);
+  const input = { target, flags: values, profile, paths, cwd };
+  const resolved = resolveRunOptions(input);
+  const io = { stdout: writeStdout, stderr: writeStderr };
+  await runCapture(resolved, io);
+}
+
 async function main(): Promise<void> {
   const { values, positionals } = parse();
   if (values.help) {
@@ -504,11 +721,11 @@ async function main(): Promise<void> {
   } else if (values.version) {
     writeStdout(`${VERSION}\n`);
   } else if (positionals[0] === "config") {
-    runConfigCommand(positionals.slice(1));
+    runConfigCommand(values, positionals.slice(1));
   } else if (positionals[0] === "page") {
     await runPageCommand(values, positionals.slice(1));
   } else if (positionals[0] === "library") {
-    throw new UsageError("library commands are not implemented yet");
+    await runLibraryCommand(values, positionals.slice(1));
   } else {
     await runCaptureCommand(values, positionals);
   }

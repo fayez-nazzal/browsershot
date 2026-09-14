@@ -82,6 +82,21 @@ written to
 `.browsershot/captures/{page}/{element|page}[_{setup}]_{timestamp}.png`, with no
 `_q-{query}` segment.
 
+## 4. Component libraries
+
+Use a library capture when the UI lives in a running component environment
+(Storybook or Ladle) instead of on an application route:
+
+```sh
+browsershot library add ui http://localhost:6006 --plugin storybook
+browsershot library ui button--primary --json
+```
+
+`add` registers the environment once; the second shape captures one example by
+name, matching the catalog id or a case-insensitive `group/name`. Never guess
+entry names: `browsershot library list ui` prints the entries a library
+actually has. The default path is
+`.browsershot/captures/{library}/{entry}_{timestamp}.png`.
 ## Check the result
 
 A PNG only proves that a file was written. For reliable checks, use
