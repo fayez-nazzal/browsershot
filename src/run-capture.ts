@@ -51,7 +51,6 @@ interface PreparedAuth {
   jarPath: string | undefined;
   retryCredentials: { credentialsPath: string; user?: string } | null;
 }
-
 export function emptySuccess(): SuccessSummary {
   return {
     outputPath: null,
