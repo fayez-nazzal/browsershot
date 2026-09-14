@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, resolve as resolvePath } from "node:path";
 import { drawAnnotations } from "./annotate.ts";
 import type { CaptureIdentity } from "./capture-target.ts";
 import { capture, isAuthenticationCaptureFailure, type CaptureOptions, type CaptureResult, type ConsoleErrorRecord } from "./capture.ts";
@@ -221,6 +221,10 @@ function writeAndReport(
   io.stderr(`browsershot: sha256 ${success.sha256}\n`);
   if (options.report.json === false) {
     io.stdout(`${out}\n`);
+  }
+  if (options.capture.withErrors === true && options.inspectJsonPath != null
+    && resolvePath(options.inspectJsonPath) === resolvePath(consoleErrorsJsonPath(out))) {
+    throw new ExitError(`wrote ${out}, but inspection and console sidecars use the same path`, EXIT_WRITE_ERROR);
   }
   if (inspected != null) {
     let sidecarPath = inspectJsonPath(out);

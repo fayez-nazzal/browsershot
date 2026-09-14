@@ -32,7 +32,7 @@ test("the runner executes one shared pipeline and always cleans run temp", async
     stdout: (line) => stdout.push(line),
     stderr: (line) => stderr.push(line),
   }, deps);
-
+  expect(calls).toEqual(["capture", "annotate"]);
   expect(summary).toMatchObject({ outputPath, bytes: 3, inspected: null, publishedUrl: null, consoleErrorsJsonPath: null, consoleErrors: null });
   expect(JSON.parse(stdout.join(""))).toEqual(summary);
   expect(stderr.join("")).toContain("browsershot: wrote");
@@ -157,6 +157,17 @@ test("console sidecar failure retains the PNG and exits 4", async () => {
   const options = optionsFor(cwd, { capture: { url: "https://example.test", fullPage: false, delayMs: 0, allowBlank: false, withErrors: true } });
   await expect(runCapture(options, recordingIo().io, {
     capture: async () => ({ png: new Uint8Array([1]), inspected: null, consoleErrors: [] }),
+  })).rejects.toMatchObject({ code: 4 });
+  expect(existsSync(options.outputPath)).toBe(true);
+});
+test("inspection and console sidecars cannot share a path", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "browsershot-runner-sidecar-collision-"));
+  const options = optionsFor(cwd, {
+    inspectJsonPath: join(cwd, "capture.console.json"),
+    capture: { url: "https://example.test", fullPage: false, delayMs: 0, allowBlank: false, withErrors: true },
+  });
+  await expect(runCapture(options, recordingIo().io, {
+    capture: async () => ({ png: new Uint8Array([1]), inspected: { role: "button", name: "Menu", attributes: {}, outerHTML: "<button>Menu</button>" } as never, consoleErrors: [] }),
   })).rejects.toMatchObject({ code: 4 });
   expect(existsSync(options.outputPath)).toBe(true);
 });
