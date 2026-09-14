@@ -39,6 +39,8 @@ Use flags when a capture needs more than a simple route:
 - `--expect-element` waits for a visible CSS element before actions.
 - `--no-auth`, `--no-expect`, `--no-json`, and `--no-auto-open` disable saved
   settings for one capture.
+- `--json` prints one machine-readable result object and no successful-run
+  human diagnostics on stderr; use it for scripts and coding agents.
 - `--with-errors` writes browser console errors and uncaught page exceptions to
   `<png basename>.console.json` beside the PNG. The JSON result exposes the
   same records inline as `consoleErrors` and the sidecar path as

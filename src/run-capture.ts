@@ -210,6 +210,10 @@ function writeAndReport(
 ): SuccessSummary {
   const quiet = options.report.json;
   const out = options.outputPath;
+  if (options.capture.withErrors === true && options.inspectJsonPath != null
+    && resolvePath(options.inspectJsonPath) === resolvePath(consoleErrorsJsonPath(out))) {
+    throw new ExitError(`wrote ${out}, but inspection and console sidecars use the same path`, EXIT_WRITE_ERROR);
+  }
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, png);
   const success = emptySuccess();
@@ -224,10 +228,6 @@ function writeAndReport(
   }
   if (options.report.json === false) {
     io.stdout(`${out}\n`);
-  }
-  if (options.capture.withErrors === true && options.inspectJsonPath != null
-    && resolvePath(options.inspectJsonPath) === resolvePath(consoleErrorsJsonPath(out))) {
-    throw new ExitError(`wrote ${out}, but inspection and console sidecars use the same path`, EXIT_WRITE_ERROR);
   }
   if (inspected != null) {
     let sidecarPath = inspectJsonPath(out);

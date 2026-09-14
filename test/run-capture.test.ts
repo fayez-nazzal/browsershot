@@ -169,7 +169,7 @@ test("inspection and console sidecars cannot share a path", async () => {
   await expect(runCapture(options, recordingIo().io, {
     capture: async () => ({ png: new Uint8Array([1]), inspected: { role: "button", name: "Menu", attributes: {}, outerHTML: "<button>Menu</button>" } as never, consoleErrors: [] }),
   })).rejects.toMatchObject({ code: 4 });
-  expect(existsSync(options.outputPath)).toBe(true);
+  expect(existsSync(options.outputPath)).toBe(false);
 });
 
 test("publish failure is exit 5 and retains the PNG", async () => {
