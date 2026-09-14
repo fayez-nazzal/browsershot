@@ -208,7 +208,12 @@ function writeAndReport(
   deps: RunCaptureDependencies,
   io: RunCaptureIO,
 ): SuccessSummary {
+  const quiet = options.report.json;
   const out = options.outputPath;
+  if (options.capture.withErrors === true && options.inspectJsonPath != null
+    && resolvePath(options.inspectJsonPath) === resolvePath(consoleErrorsJsonPath(out))) {
+    throw new ExitError(`wrote ${out}, but inspection and console sidecars use the same path`, EXIT_WRITE_ERROR);
+  }
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, png);
   const success = emptySuccess();
@@ -217,14 +222,12 @@ function writeAndReport(
   success.sha256 = sha256Hex(png);
   success.captured = options.captured;
   success.consoleErrors = options.capture.withErrors === true ? consoleErrors ?? [] : null;
-  io.stderr(`browsershot: wrote ${out} (${png.length} bytes)\n`);
-  io.stderr(`browsershot: sha256 ${success.sha256}\n`);
+  if (!quiet) {
+    io.stderr(`browsershot: wrote ${out} (${png.length} bytes)\n`);
+    io.stderr(`browsershot: sha256 ${success.sha256}\n`);
+  }
   if (options.report.json === false) {
     io.stdout(`${out}\n`);
-  }
-  if (options.capture.withErrors === true && options.inspectJsonPath != null
-    && resolvePath(options.inspectJsonPath) === resolvePath(consoleErrorsJsonPath(out))) {
-    throw new ExitError(`wrote ${out}, but inspection and console sidecars use the same path`, EXIT_WRITE_ERROR);
   }
   if (inspected != null) {
     let sidecarPath = inspectJsonPath(out);
@@ -239,8 +242,10 @@ function writeAndReport(
     }
     success.inspectJsonPath = sidecarPath;
     success.inspected = inspected;
-    io.stderr(`browsershot: inspected ${inspectSummary(inspected, options.capture.inspect?.attr)}\n`);
-    io.stderr(`browsershot: element json ${sidecarPath}\n`);
+    if (!quiet) {
+      io.stderr(`browsershot: inspected ${inspectSummary(inspected, options.capture.inspect?.attr)}\n`);
+      io.stderr(`browsershot: element json ${sidecarPath}\n`);
+    }
   }
   if (options.capture.withErrors === true) {
     const sidecarPath = consoleErrorsJsonPath(out);
@@ -251,7 +256,9 @@ function writeAndReport(
       throw new ExitError(`wrote ${out}, but could not write ${sidecarPath}: ${(e as Error).message}`, EXIT_WRITE_ERROR);
     }
     success.consoleErrorsJsonPath = sidecarPath;
-    io.stderr(`browsershot: console errors json ${sidecarPath}\n`);
+    if (!quiet) {
+      io.stderr(`browsershot: console errors json ${sidecarPath}\n`);
+    }
   }
   if (options.capture.withErrors === true && options.report.json === false) {
     io.stderr(formatConsoleErrors(consoleErrors ?? []));
@@ -282,22 +289,29 @@ function writeAndReport(
     io.stdout(`${JSON.stringify(success)}\n`);
   }
   if (options.report.autoOpen === true) {
-    deps.openFile(out, (message) => io.stderr(`browsershot: warning: ${message}\n`));
+    deps.openFile(out, quiet ? (() => {}) : (message) => io.stderr(`browsershot: warning: ${message}\n`));
   }
   return success;
 }
 
 export async function runCapture(options: ResolvedRunOptions, io: RunCaptureIO, overrides: Partial<RunCaptureDependencies> = {}): Promise<SuccessSummary> {
   const deps = withDefaults(overrides);
+  const quiet = options.report.json;
+  const reportStderr = quiet ? undefined : io.stderr;
   ensureWorkspace(options.cwd);
   const runTmp = createRunTmpDir(options.cwd);
   try {
-    const auth = await prepareAuthentication(options, deps, io.stderr);
+    const auth = await prepareAuthentication(options, deps, reportStderr ?? (() => {}));
     const captured = await captureWithAuthRetry(
-      { ...options.capture, cookiesPath: auth.jarPath, log: (message) => io.stderr(`browsershot: ${message}\n`) },
+      {
+        ...options.capture,
+        verbose: quiet ? false : options.capture.verbose,
+        cookiesPath: auth.jarPath,
+        log: reportStderr == null ? undefined : (message) => reportStderr(`browsershot: ${message}\n`),
+      },
       auth.retryCredentials,
       deps,
-      io.stderr,
+      reportStderr,
     );
     const png = deps.drawAnnotations(captured.png, options.annotations.boxes, options.annotations.markers, runTmp);
     return writeAndReport(options, captured.inspected, captured.consoleErrors, png, deps, io);

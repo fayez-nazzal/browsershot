@@ -27,7 +27,7 @@ function writeSamplePage(dir: string): string {
   return html;
 }
 
-test("--json prints exactly one JSON object on stdout and keeps human lines on stderr", () => {
+test("--json prints exactly one JSON object on stdout and no human diagnostics", () => {
   const dir = scratch();
   const html = writeSamplePage(dir);
   const out = join(dir, "shot.png");
@@ -44,7 +44,7 @@ test("--json prints exactly one JSON object on stdout and keeps human lines on s
   expect(parsed.inspectJsonPath).toBeNull();
   expect(parsed.inspected).toBeNull();
   expect(parsed.publishedUrl).toBeNull();
-  expect(proc.stderr.toString()).toContain("browsershot: wrote ");
+  expect(proc.stderr.toString()).toBe("");
 }, 120000);
 
 test("without --json the first stdout line is the absolute output path", () => {

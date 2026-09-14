@@ -16,7 +16,7 @@ import { DEFAULT_EMBED_WIDTH } from "./publish.ts";
 
 export interface CaptureFlags {
   output?: string; group?: string; label?: string; size?: string;
-  "full-page"?: boolean; element?: string; "no-element"?: boolean; setup?: string; delay?: string; verbose?: boolean; "with-errors"?: boolean;
+  "full-page"?: boolean; element?: string; "no-element"?: boolean; setup?: string; delay?: string; verbose?: boolean; "with-errors"?: boolean; "no-with-errors"?: boolean;
   auth?: boolean; "auth-user"?: string; "auth-credentials"?: string;
   "auth-redirect"?: string; "auth-purpose"?: string;
   "no-auth"?: boolean; "no-auth-redirect"?: boolean;
@@ -25,8 +25,8 @@ export interface CaptureFlags {
   act?: string; inspect?: string; "inspect-attr"?: string;
   "inspect-json"?: string; "inspect-note"?: string;
   box?: string[]; marker?: string[];
-  json?: boolean; "no-json"?: boolean;
-  "auto-open"?: boolean; "no-auto-open"?: boolean;
+  json?: boolean; "no-json"?: boolean; "no-auto-open"?: boolean;
+  "auto-open"?: boolean;
   publish?: string; "publish-size"?: string; "publish-label"?: string;
   plugin?: string; ready?: string; scope?: string;
 }
@@ -89,6 +89,9 @@ function validateConflicts(flags: Readonly<CaptureFlags>): void {
   }
   if (flags["no-json"] === true && flags.json === true) {
     throw new UsageError("conflict between --no-json and --json");
+  }
+  if (flags["no-with-errors"] === true && flags["with-errors"] === true) {
+    throw new UsageError("conflict between --no-with-errors and --with-errors");
   }
   if (flags["no-auto-open"] === true && flags["auto-open"] === true) {
     throw new UsageError("conflict between --no-auto-open and --auto-open");
@@ -327,7 +330,7 @@ export function resolveRunOptions(input: ResolveRunOptionsInput): ResolvedRunOpt
         inspect,
         inspectFooter: flags["inspect-note"],
         verbose: flags.verbose === true,
-        withErrors: flags["with-errors"] === true || profile.withErrors === true,
+        withErrors: flags["no-with-errors"] === true ? false : flags["with-errors"] === true || profile.withErrors === true,
       },
       auth,
       outputPath,
