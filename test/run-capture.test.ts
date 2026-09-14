@@ -35,7 +35,7 @@ test("the runner executes one shared pipeline and always cleans run temp", async
   expect(calls).toEqual(["capture", "annotate"]);
   expect(summary).toMatchObject({ outputPath, bytes: 3, inspected: null, publishedUrl: null, consoleErrorsJsonPath: null, consoleErrors: null });
   expect(JSON.parse(stdout.join(""))).toEqual(summary);
-  expect(stderr.join("")).toContain("browsershot: wrote");
+  expect(stderr.join("")).toBe("");
   expect(existsSync(outputPath)).toBe(true);
   expect(existsSync(join(cwd, "capture.console.json"))).toBe(false);
   expect(readdirSync(join(cwd, ".browsershot", "tmp"))).toEqual([]);
@@ -146,7 +146,7 @@ test("with-errors writes an empty console sidecar and reports its path", async (
   expect(summary.consoleErrorsJsonPath).toBe(sidecar);
   expect(summary.consoleErrors).toEqual([]);
   expect(JSON.parse(readFileSync(sidecar, "utf8"))).toEqual({ consoleErrors: [] });
-  expect(recorded.stderr.join("")).toContain(`console errors json ${sidecar}`);
+  expect(recorded.stderr.join("")).toBe("");
   expect(JSON.parse(recorded.stdout.join(""))).toMatchObject({ consoleErrorsJsonPath: sidecar, consoleErrors: [] });
 });
 

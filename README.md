@@ -245,7 +245,7 @@ Successful `--json` output has these fields:
 | `publishedUrl` | Public URL, or `null` |
 | `captured` | What the run captured: `{"kind": "url"}` for an ad-hoc capture, or the saved page or library entry identity |
 
-With `--json`, exactly one object is emitted on stdout; when error collection is enabled, `consoleErrors` is included inline. Human diagnostics use stderr; without JSON, formatted collected errors are printed there while the absolute PNG path remains first on stdout. Successful publishing additionally prints a Markdown embed. JSON success is emitted only after requested sidecar and publishing work succeeds.
+With `--json`, exactly one object is emitted on stdout and successful captures emit no human diagnostics on stderr; when error collection is enabled, `consoleErrors` is included inline. Without JSON, human diagnostics use stderr, formatted collected errors are printed there, and the absolute PNG path remains first on stdout. Successful publishing additionally prints a Markdown embed. JSON success is emitted only after requested sidecar and publishing work succeeds.
 
 Exit codes: `0` success; `1` capture or page-guard failure; `2` usage, conflicting flags, or invalid config; `3` Authstate or credentials environment failure; `4` PNG written but sidecar failed; `5` PNG written but publishing failed. In the last two cases the PNG remains and there is no successful JSON result.
 

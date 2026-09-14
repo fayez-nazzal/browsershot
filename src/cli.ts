@@ -158,8 +158,8 @@ OUTPUT AND ERRORS
   stdout is exactly one object with outputPath, bytes, sha256, inspectJsonPath,
   consoleErrorsJsonPath, consoleErrors, inspected and publishedUrl. --with-errors
   writes <png basename>.console.json beside the PNG; the errors are also inline
-  in the JSON result. Without --json, formatted errors are printed on stderr.
-  Human diagnostics are on stderr.
+  in the JSON result. Without --json, formatted errors and human diagnostics are
+  printed on stderr. Successful --json captures emit no human diagnostics.
 
   Exit 0  capture written
   Exit 1  page guard or capture failure
