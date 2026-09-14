@@ -88,7 +88,7 @@ function validateString(name: ProfileSettingName, value: string): void {
 }
 
 function positiveInteger(name: ProfileSettingName, value: number): void {
-  if (!Number.isInteger(value) || value <= 0) {
+  if (!Number.isSafeInteger(value) || value <= 0) {
     throw new UsageError(`profile setting ${name} must be a positive integer`);
   }
 }

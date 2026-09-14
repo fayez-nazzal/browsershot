@@ -27,6 +27,7 @@ test("delay saves as milliseconds and rejects non-positive values", () => {
   expect(run(root, "config", "show").stdout.toString()).toContain('"delay": 3000');
   expect(run(root, "config", "set", "delay", "0").exitCode).toBe(2);
   expect(run(root, "config", "set", "delay", "1.5").exitCode).toBe(2);
+  expect(run(root, "config", "set", "delay", "9007199254740993").exitCode).toBe(2);
 });
 
 test("config commands set show path and unset saved values", () => {
