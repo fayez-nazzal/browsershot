@@ -234,6 +234,7 @@ Repeat `--box x,y,w,h[,color]` and `--marker x,y[,color]` for coordinate evidenc
 Successful `--json` output has these fields:
 
 | Field | Meaning |
+| --- | --- |
 | `outputPath` | Absolute PNG path |
 | `bytes` | PNG byte count |
 | `sha256` | PNG SHA-256 digest |
