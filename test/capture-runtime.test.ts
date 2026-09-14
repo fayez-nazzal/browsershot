@@ -22,6 +22,40 @@ function fakePage(gotoError?: Error) {
     screenshot: async () => new Uint8Array([137, 80, 78, 71]),
   };
 }
+function errorPage() {
+  const handlers: Record<string, Array<(value: unknown) => void>> = {};
+  const page = {
+    ...fakePage(),
+    on: (event: string, handler: (value: unknown) => void) => {
+      (handlers[event] ??= []).push(handler);
+      return page;
+    },
+    goto: async () => {
+      for (const handler of handlers.console ?? []) {
+        handler({
+          type: () => "warning",
+          text: () => "not collected",
+          location: () => ({ url: "https://example.test/app.js", lineNumber: 1, columnNumber: 2 }),
+        });
+      }
+      for (const handler of handlers.requestfailed ?? []) {
+        handler({ url: () => "https://example.test/missing.js", failure: () => ({ errorText: "failed" }) });
+      }
+      for (const handler of handlers.pageerror ?? []) {
+        handler(Object.assign(new Error("uncaught"), { stack: "Error: uncaught\n at app.js:3:4" }));
+      }
+      for (const handler of handlers.console ?? []) {
+        handler({
+          type: () => "error",
+          text: () => "console broke",
+          location: () => ({ url: "https://example.test/app.js", lineNumber: 7, columnNumber: 8 }),
+        });
+      }
+      return { status: () => 200, url: () => BASE_OPTIONS.url };
+    },
+  };
+  return page;
+}
 
 function elementPage(events: string[]) {
   const locator = {
@@ -45,6 +79,20 @@ function fakeBrowser(page: unknown): Browser {
     close: async () => {},
   } as unknown as Browser;
 }
+test("with-errors collects ordered console errors and page exceptions only", async () => {
+  const { launchBrowser } = scriptedLauncher(fakeBrowser(errorPage()), []);
+  const result = await capture({ ...BASE_OPTIONS, withErrors: true }, { launchBrowser });
+  expect(result.consoleErrors).toEqual([
+    { kind: "pageerror", text: "uncaught", message: "uncaught", stack: "Error: uncaught\n at app.js:3:4" },
+    { kind: "console", text: "console broke", url: "https://example.test/app.js", line: 7, column: 8 },
+  ]);
+});
+
+test("without with-errors omits collected error records", async () => {
+  const { launchBrowser } = scriptedLauncher(fakeBrowser(errorPage()), []);
+  const result = await capture(BASE_OPTIONS, { launchBrowser });
+  expect(result.consoleErrors).toBeUndefined();
+});
 
 function scriptedLauncher(browser: Browser, errors: Error[]) {
   const calls: LaunchOptions[] = [];

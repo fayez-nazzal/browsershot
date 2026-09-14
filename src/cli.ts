@@ -80,6 +80,8 @@ CAPTURE
       --full-page           Capture the whole scrollable page
       --auto-open           Open the written capture with the platform viewer
       --no-auto-open        Disable a saved autoOpen setting for this run
+      --with-errors         Write console errors and uncaught page errors to a
+                            .console.json sidecar beside the PNG
       --json                Print one JSON result instead of a path
       --no-json             Disable a saved json setting for this run
 
@@ -153,21 +155,25 @@ PUBLISHING RULES
 OUTPUT AND ERRORS
   Without --json, the absolute PNG path is the first stdout line. With --json,
   stdout is exactly one object with outputPath, bytes, sha256, inspectJsonPath,
-  inspected and publishedUrl. Human diagnostics are on stderr.
+  consoleErrorsJsonPath, consoleErrors, inspected and publishedUrl. --with-errors
+  writes <png basename>.console.json beside the PNG; the errors are also inline
+  in the JSON result. Without --json, formatted errors are printed on stderr.
+  Human diagnostics are on stderr.
 
   Exit 0  capture written
   Exit 1  page guard or capture failure
   Exit 2  invalid command, option, conflicting flags or invalid saved configuration
   Exit 3  authstate or credentials environment failure
-  Exit 4  PNG written but inspection sidecar failed
+  Exit 4  PNG written but a sidecar failed
   Exit 5  PNG written but publishing failed
 
 CONFIGURATION
   Canonical saved names: baseUrl, authUser, authRedirect, expectElement,
-  expectText, element, output, group, label, json, autoOpen and publish.
+  expectText, element, output, group, label, json, autoOpen, withErrors and
+  publish. Use "config set withErrors" to enable error collection by default.
   Kebab-case aliases are accepted for set and unset, including base-url,
-  url, auth-user, expect-element, expect-text and auto-open. Reads never
-  rewrite the config file and never create the workspace.
+  url, auth-user, expect-element, expect-text, auto-open and with-errors.
+  Reads never rewrite the config file and never create the workspace.
 
 SAVED PAGES
   browsershot page add checkout /checkout --auth-user member
@@ -233,6 +239,7 @@ export function parseCliArgs(argv: string[]) {
       "auth-redirect": { type: "string" },
       "auth-purpose": { type: "string" },
       verbose: { type: "boolean", default: false },
+      "with-errors": { type: "boolean", default: false },
       delay: { type: "string" },
       act: { type: "string" },
       "allow-blank": { type: "boolean", default: false },
@@ -574,7 +581,7 @@ function captureFlagPresent(values: CaptureFlags): boolean {
     || values["publish-size"] !== undefined || values["publish-label"] !== undefined
   );
   const toggles = (
-    values.auth === true || values.json === true || values.verbose === true
+    values.auth === true || values.json === true || values.verbose === true || values["with-errors"] === true
     || values["full-page"] === true || values["allow-blank"] === true || values["allow-status"] === true
     || values["auto-open"] === true || values["no-element"] === true || values["no-expect"] === true
     || values["no-auth"] === true || values["no-auth-redirect"] === true || values["no-json"] === true

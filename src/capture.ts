@@ -22,11 +22,24 @@ export interface CaptureOptions {
   expectElement?: string;
   log?: (message: string) => void;
   verbose?: boolean;
+  withErrors?: boolean;
+}
+
+export interface ConsoleErrorRecord {
+  kind: "console" | "pageerror";
+  text: string;
+  url?: string;
+  line?: number;
+  column?: number;
+  message?: string;
+  stack?: string;
+  truncated?: boolean;
 }
 
 export interface CaptureResult {
   png: Uint8Array;
   inspected: ElementRecord | null;
+  consoleErrors?: ConsoleErrorRecord[];
 }
 
 export class AuthenticationCaptureFailure extends Error {
@@ -38,6 +51,13 @@ export class AuthenticationCaptureFailure extends Error {
 
 export const VIEWPORT_WIDTH = 1440;
 export const VIEWPORT_HEIGHT = 900;
+const MAX_CONSOLE_ERROR_RECORDS = 1000;
+const MAX_CONSOLE_ERROR_TEXT_LENGTH = 8192;
+
+function limitedErrorText(value: string): { value: string; truncated: boolean } {
+  if (value.length <= MAX_CONSOLE_ERROR_TEXT_LENGTH) return { value, truncated: false };
+  return { value: `${value.slice(0, MAX_CONSOLE_ERROR_TEXT_LENGTH)}…`, truncated: true };
+}
 const DEVICE_SCALE_FACTOR = 2;
 export const NAVIGATION_TIMEOUT_MS = 30000;
 
@@ -216,16 +236,48 @@ async function captureScreenshot(page: Page, o: CaptureOptions): Promise<Uint8Ar
   }
 }
 
-
 export async function capture(o: CaptureOptions, deps: CaptureDeps = defaultCaptureDeps): Promise<CaptureResult> {
   const session = await openSession(o, deps);
   let png: Uint8Array;
   let inspected: ElementRecord | null = null;
+  const consoleErrors: ConsoleErrorRecord[] = [];
   try {
     const page = await session.context.newPage();
+    if (o.withErrors === true) {
+      const recordError = (record: ConsoleErrorRecord): void => {
+        if (consoleErrors.length >= MAX_CONSOLE_ERROR_RECORDS) {
+          const last = consoleErrors[consoleErrors.length - 1];
+          if (last != null) last.truncated = true;
+          return;
+        }
+        consoleErrors.push(record);
+      };
+      page.on("console", (msg) => {
+        if (msg.type() !== "error") return;
+        const text = limitedErrorText(msg.text());
+        const location = msg.location();
+        const record: ConsoleErrorRecord = { kind: "console", text: text.value };
+        if (text.truncated) record.truncated = true;
+        if (location.url !== "") record.url = location.url;
+        if (location.lineNumber >= 0) record.line = location.lineNumber;
+        if (location.columnNumber >= 0) record.column = location.columnNumber;
+        recordError(record);
+      });
+      page.on("pageerror", (error) => {
+        const message = limitedErrorText(error.message);
+        const record: ConsoleErrorRecord = { kind: "pageerror", text: message.value, message: message.value };
+        if (message.truncated) record.truncated = true;
+        if (error.stack !== undefined) {
+          const stack = limitedErrorText(error.stack);
+          record.stack = stack.value;
+          if (stack.truncated) record.truncated = true;
+        }
+        recordError(record);
+      });
+    }
     if (o.verbose === true) {
       page.on("console", (msg) => {
-        if (msg.type() === "error") {
+        if (msg.type() === "error" && o.withErrors !== true) {
           process.stderr.write(`browsershot: [console.error] ${msg.text()}\n`);
         }
       });
@@ -246,5 +298,7 @@ export async function capture(o: CaptureOptions, deps: CaptureDeps = defaultCapt
   } finally {
     await closeSession(session);
   }
-  return { png, inspected };
+  const result: CaptureResult = { png, inspected };
+  if (o.withErrors === true) result.consoleErrors = consoleErrors;
+  return result;
 }

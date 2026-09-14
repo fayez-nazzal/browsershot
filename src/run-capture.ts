@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, resolve as resolvePath } from "node:path";
 import { drawAnnotations } from "./annotate.ts";
 import type { CaptureIdentity } from "./capture-target.ts";
-import { capture, isAuthenticationCaptureFailure, type CaptureOptions, type CaptureResult } from "./capture.ts";
+import { capture, isAuthenticationCaptureFailure, type CaptureOptions, type CaptureResult, type ConsoleErrorRecord } from "./capture.ts";
 import { ExitError, EXIT_FAILED, EXIT_WRITE_ERROR, publishFailure } from "./exit-codes.ts";
 import { AuthStateFailure, discoverAuthCredentials, resolveAuthJar } from "./authstate.ts";
 import type { ElementRecord } from "./inspect.ts";
@@ -17,6 +17,8 @@ export interface SuccessSummary {
   bytes: number | null;
   sha256: string | null;
   inspectJsonPath: string | null;
+  consoleErrorsJsonPath: string | null;
+  consoleErrors: ConsoleErrorRecord[] | null;
   inspected: unknown;
   publishedUrl: string | null;
   captured: CaptureIdentity;
@@ -56,6 +58,8 @@ export function emptySuccess(): SuccessSummary {
     bytes: null,
     sha256: null,
     inspectJsonPath: null,
+    consoleErrorsJsonPath: null,
+    consoleErrors: null,
     inspected: null,
     publishedUrl: null,
     captured: { kind: "url" },
@@ -74,6 +78,12 @@ export function inspectJsonPath(pngPath: string): string {
   return result;
 }
 
+export function consoleErrorsJsonPath(pngPath: string): string {
+  const extension = pngPath.match(/\.([^.\\/]*)$/)?.[0];
+  if (extension === undefined) return `${pngPath}.console.json`;
+  return `${pngPath.slice(0, -extension.length)}.console.json`;
+}
+
 export function inspectSummary(record: ElementRecord, attr?: string): string {
   let name = record.name;
   if (name === "") {
@@ -88,6 +98,25 @@ export function inspectSummary(record: ElementRecord, attr?: string): string {
     summary = `${summary} ${attr}=${value}`;
   }
   return summary;
+}
+
+function formatConsoleErrors(errors: ConsoleErrorRecord[]): string {
+  const lines = [`browsershot: console errors (${errors.length})`];
+  for (const error of errors) {
+    let location = "";
+    if (error.url != null) {
+      location = ` at ${error.url}`;
+      if (error.line != null) location += `:${error.line}`;
+      if (error.column != null) location += `:${error.column}`;
+    }
+    lines.push(`  [${error.kind}] ${error.text}${location}`);
+    if (error.kind === "pageerror" && error.stack != null && error.stack !== error.text) {
+      for (const stackLine of error.stack.split("\n")) {
+        lines.push(`    ${stackLine}`);
+      }
+    }
+  }
+  return `${lines.join("\n")}\n`;
 }
 
 function withDefaults(overrides: Partial<RunCaptureDependencies>): RunCaptureDependencies {
@@ -171,7 +200,14 @@ async function prepareAuthentication(options: ResolvedRunOptions, deps: RunCaptu
   return { jarPath, retryCredentials };
 }
 
-function writeAndReport(options: ResolvedRunOptions, inspected: ElementRecord | null, png: Uint8Array, deps: RunCaptureDependencies, io: RunCaptureIO): SuccessSummary {
+function writeAndReport(
+  options: ResolvedRunOptions,
+  inspected: ElementRecord | null,
+  consoleErrors: ConsoleErrorRecord[] | undefined,
+  png: Uint8Array,
+  deps: RunCaptureDependencies,
+  io: RunCaptureIO,
+): SuccessSummary {
   const out = options.outputPath;
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, png);
@@ -180,10 +216,15 @@ function writeAndReport(options: ResolvedRunOptions, inspected: ElementRecord | 
   success.bytes = png.length;
   success.sha256 = sha256Hex(png);
   success.captured = options.captured;
+  success.consoleErrors = options.capture.withErrors === true ? consoleErrors ?? [] : null;
   io.stderr(`browsershot: wrote ${out} (${png.length} bytes)\n`);
   io.stderr(`browsershot: sha256 ${success.sha256}\n`);
   if (options.report.json === false) {
     io.stdout(`${out}\n`);
+  }
+  if (options.capture.withErrors === true && options.inspectJsonPath != null
+    && resolvePath(options.inspectJsonPath) === resolvePath(consoleErrorsJsonPath(out))) {
+    throw new ExitError(`wrote ${out}, but inspection and console sidecars use the same path`, EXIT_WRITE_ERROR);
   }
   if (inspected != null) {
     let sidecarPath = inspectJsonPath(out);
@@ -200,6 +241,20 @@ function writeAndReport(options: ResolvedRunOptions, inspected: ElementRecord | 
     success.inspected = inspected;
     io.stderr(`browsershot: inspected ${inspectSummary(inspected, options.capture.inspect?.attr)}\n`);
     io.stderr(`browsershot: element json ${sidecarPath}\n`);
+  }
+  if (options.capture.withErrors === true) {
+    const sidecarPath = consoleErrorsJsonPath(out);
+    try {
+      mkdirSync(dirname(sidecarPath), { recursive: true });
+      writeFileSync(sidecarPath, `${JSON.stringify({ consoleErrors: consoleErrors ?? [] }, null, 2)}\n`);
+    } catch (e) {
+      throw new ExitError(`wrote ${out}, but could not write ${sidecarPath}: ${(e as Error).message}`, EXIT_WRITE_ERROR);
+    }
+    success.consoleErrorsJsonPath = sidecarPath;
+    io.stderr(`browsershot: console errors json ${sidecarPath}\n`);
+  }
+  if (options.capture.withErrors === true && options.report.json === false) {
+    io.stderr(formatConsoleErrors(consoleErrors ?? []));
   }
   if (options.publish != null) {
     let pngLabel = labelFromPath(out);
@@ -245,7 +300,7 @@ export async function runCapture(options: ResolvedRunOptions, io: RunCaptureIO, 
       io.stderr,
     );
     const png = deps.drawAnnotations(captured.png, options.annotations.boxes, options.annotations.markers, runTmp);
-    return writeAndReport(options, captured.inspected, png, deps, io);
+    return writeAndReport(options, captured.inspected, captured.consoleErrors, png, deps, io);
   } catch (error) {
     if (error instanceof ExitError) throw error;
     throw new ExitError((error as Error).message, EXIT_FAILED);

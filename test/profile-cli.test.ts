@@ -13,9 +13,16 @@ function run(root: string, ...args: string[]) {
   return Bun.spawnSync(["bun", CLI, ...args], { cwd: root });
 }
 
+test("config commands set and unset withErrors", () => {
+  const root = scratch();
+  expect(run(root, "config", "set", "withErrors").exitCode).toBe(0);
+  expect(run(root, "config", "show").stdout.toString()).toContain('"withErrors": true');
+  expect(run(root, "config", "unset", "withErrors").exitCode).toBe(0);
+  expect(run(root, "config", "show").stdout.toString()).not.toContain('"withErrors"');
+});
+
 test("config commands set show path and unset saved values", () => {
   const root = scratch();
-
   expect(run(root, "config", "set", "url", "http://localhost:8990/app").exitCode).toBe(0);
   expect(run(root, "config", "set", "json").exitCode).toBe(0);
   expect(run(root, "config", "show").stdout.toString()).toContain('"json": true');

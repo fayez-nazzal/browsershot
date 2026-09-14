@@ -13,6 +13,7 @@ export interface ProfileConfig {
   label?: string;
   json?: boolean;
   autoOpen?: boolean;
+  withErrors?: boolean;
   publish?: string;
 }
 
@@ -52,6 +53,7 @@ export const PROFILE_SETTINGS: { [Name in ProfileSettingName]-?: ProfileSettingD
   label: { kind: "string", validate: (value) => { validateOutputLabel(value, TEMPLATE_EXAMPLE); } },
   json: { kind: "boolean" },
   autoOpen: { kind: "boolean", aliases: ["auto-open"] },
+  withErrors: { kind: "boolean", aliases: ["with-errors"] },
   publish: { kind: "string" },
 };
 

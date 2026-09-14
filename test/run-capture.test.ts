@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCapture, captureWithAuthRetry, emptySuccess, sha256Hex, type RunCaptureDependencies } from "../src/run-capture.ts";
@@ -32,12 +32,12 @@ test("the runner executes one shared pipeline and always cleans run temp", async
     stdout: (line) => stdout.push(line),
     stderr: (line) => stderr.push(line),
   }, deps);
-
   expect(calls).toEqual(["capture", "annotate"]);
-  expect(summary).toMatchObject({ outputPath, bytes: 3, inspected: null, publishedUrl: null });
+  expect(summary).toMatchObject({ outputPath, bytes: 3, inspected: null, publishedUrl: null, consoleErrorsJsonPath: null, consoleErrors: null });
   expect(JSON.parse(stdout.join(""))).toEqual(summary);
   expect(stderr.join("")).toContain("browsershot: wrote");
   expect(existsSync(outputPath)).toBe(true);
+  expect(existsSync(join(cwd, "capture.console.json"))).toBe(false);
   expect(readdirSync(join(cwd, ".browsershot", "tmp"))).toEqual([]);
 });
 
@@ -135,6 +135,42 @@ test("sidecar failure is exit 4 and retains the PNG", async () => {
   })).rejects.toMatchObject({ code: 4 });
   expect(existsSync(options.outputPath)).toBe(true);
 });
+test("with-errors writes an empty console sidecar and reports its path", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "browsershot-runner-console-"));
+  const recorded = recordingIo();
+  const sidecar = join(cwd, "capture.console.json");
+  const options = optionsFor(cwd, { capture: { url: "https://example.test", fullPage: false, delayMs: 0, allowBlank: false, withErrors: true } });
+  const summary = await runCapture(options, recorded.io, {
+    capture: async () => ({ png: new Uint8Array([1]), inspected: null, consoleErrors: [] }),
+  });
+  expect(summary.consoleErrorsJsonPath).toBe(sidecar);
+  expect(summary.consoleErrors).toEqual([]);
+  expect(JSON.parse(readFileSync(sidecar, "utf8"))).toEqual({ consoleErrors: [] });
+  expect(recorded.stderr.join("")).toContain(`console errors json ${sidecar}`);
+  expect(JSON.parse(recorded.stdout.join(""))).toMatchObject({ consoleErrorsJsonPath: sidecar, consoleErrors: [] });
+});
+
+test("console sidecar failure retains the PNG and exits 4", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "browsershot-runner-console-fail-"));
+  const sidecarDirectory = join(cwd, "capture.console.json");
+  mkdirSync(sidecarDirectory);
+  const options = optionsFor(cwd, { capture: { url: "https://example.test", fullPage: false, delayMs: 0, allowBlank: false, withErrors: true } });
+  await expect(runCapture(options, recordingIo().io, {
+    capture: async () => ({ png: new Uint8Array([1]), inspected: null, consoleErrors: [] }),
+  })).rejects.toMatchObject({ code: 4 });
+  expect(existsSync(options.outputPath)).toBe(true);
+});
+test("inspection and console sidecars cannot share a path", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "browsershot-runner-sidecar-collision-"));
+  const options = optionsFor(cwd, {
+    inspectJsonPath: join(cwd, "capture.console.json"),
+    capture: { url: "https://example.test", fullPage: false, delayMs: 0, allowBlank: false, withErrors: true },
+  });
+  await expect(runCapture(options, recordingIo().io, {
+    capture: async () => ({ png: new Uint8Array([1]), inspected: { role: "button", name: "Menu", attributes: {}, outerHTML: "<button>Menu</button>" } as never, consoleErrors: [] }),
+  })).rejects.toMatchObject({ code: 4 });
+  expect(existsSync(options.outputPath)).toBe(true);
+});
 
 test("publish failure is exit 5 and retains the PNG", async () => {
   const cwd = mkdtempSync(join(tmpdir(), "browsershot-runner-publish-"));
@@ -175,6 +211,24 @@ test("human reporting writes path then publish markdown and opens last", async (
 function captureResult() {
   return { png: new Uint8Array([1, 2, 3]), inspected: null };
 }
+
+test("human mode formats captured console errors on stderr", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "browsershot-runner-console-human-"));
+  const recorded = recordingIo();
+  const options = optionsFor(cwd, {
+    capture: { url: "https://example.test", fullPage: false, delayMs: 0, allowBlank: false, withErrors: true },
+    report: { json: false, autoOpen: false },
+  });
+  await runCapture(options, recorded.io, {
+    capture: async () => ({
+      png: new Uint8Array([1]),
+      inspected: null,
+      consoleErrors: [{ kind: "console", text: "bad thing", url: "https://example.test/app.js", line: 4, column: 2 }],
+    }),
+  });
+  expect(recorded.stdout).toEqual([`${options.outputPath}\n`]);
+  expect(recorded.stderr.join("")).toContain("[console] bad thing at https://example.test/app.js:4:2");
+});
 
 test("auth capture retries once with a verified jar after an auth failure", async () => {
   const calls: string[] = [];
@@ -243,6 +297,8 @@ test("emptySuccess carries every success key and a url identity", () => {
     "bytes",
     "sha256",
     "inspectJsonPath",
+    "consoleErrorsJsonPath",
+    "consoleErrors",
     "inspected",
     "publishedUrl",
     "captured",

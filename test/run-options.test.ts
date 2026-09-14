@@ -32,6 +32,7 @@ test("built-in defaults produce a complete execution model", () => {
       allowBlank: false,
       allowStatus: false,
       verbose: false,
+      withErrors: false,
     },
     auth: { requested: false },
     publish: null,
@@ -57,6 +58,10 @@ test("saved defaults and explicit replacements resolve once", () => {
   expect(result.outputPath).toBe("/repo/explicit.png");
   expect(result.publish).toEqual({ destination: "gdrive:explicit/", size: 1200, label: undefined });
   expect(result.report).toEqual({ json: true, autoOpen: true });
+});
+test("saved withErrors enables error collection without a CLI flag", () => {
+  expect(resolve("https://example.com", {}, { withErrors: true }).capture.withErrors).toBe(true);
+  expect(resolve("https://example.com", { "with-errors": true }).capture.withErrors).toBe(true);
 });
 
 test("no-element disables saved capture and element conflicts are usage errors", () => {
@@ -95,7 +100,7 @@ test("equivalent quick and complete URLs produce the same normalized model", () 
   const cases: CaptureFlags[] = [
     {},
     {
-      size: "800x600", delay: "25", "full-page": true, verbose: true,
+      size: "800x600", delay: "25", "full-page": true, verbose: true, "with-errors": true,
       auth: true, "auth-user": "admin", "auth-credentials": "/tmp/creds.yaml",
       "auth-redirect": "/login", "expect-text": "Ready", "expect-element": "#ready",
       "allow-status": true, "allow-blank": true, act: "click:#menu", inspect: "#menu",
@@ -127,7 +132,7 @@ test("resolution does not mutate flags or profile", () => {
 
 test("all capture flag families resolve into their owned model fields", () => {
   const result = resolve("https://example.com/pricing", {
-    size: "800x600", delay: "25", "full-page": true, verbose: true,
+    size: "800x600", delay: "25", "full-page": true, verbose: true, "with-errors": true,
     auth: true, "auth-user": "admin", "auth-credentials": "/tmp/creds.yaml",
     "auth-redirect": "/login", "expect-text": "Ready", "expect-element": "#ready",
     "allow-status": true, "allow-blank": true, act: "click:#menu", inspect: "#menu",
@@ -138,7 +143,7 @@ test("all capture flag families resolve into their owned model fields", () => {
   });
   expect(result).toMatchObject({
     capture: {
-      viewport: { width: 800, height: 600 }, delayMs: 25, fullPage: true, verbose: true,
+      viewport: { width: 800, height: 600 }, delayMs: 25, fullPage: true, verbose: true, withErrors: true,
       authRedirect: "/login", expectText: "Ready", expectElement: "#ready",
       allowStatus: true, allowBlank: true, actions: [{ kind: "click", value: "#menu" }],
       inspect: { selector: "#menu", attr: "aria-expanded", timeoutMs: 30000 },
