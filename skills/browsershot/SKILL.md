@@ -63,4 +63,16 @@ the `_q-{query}` segment.
 
 Read the single JSON object from stdout. Assert on `outputPath`, `sha256`, and `inspected` or `inspectJsonPath`; never read PNG bytes. The seventh field, `captured`, records what the run captured: `{"kind":"url"}` for a URL or quick-route capture, or `{"kind":"page","page":"checkout","element":"summary","setup":"empty"}` for a saved page, where `element` and `setup` are `null` when the run did not name them. `--expect-text` and `--expect-element` are pre-action readiness checks. `--inspect-attr` reports an attribute and does not compare it to an expected value. Report the absolute output path, the text or element verified, and any failure exit code.
 
+Component libraries are captured by name: register the running environment once
+with `browsershot library add ui http://localhost:6006 --plugin storybook`, then
+capture with `browsershot library ui button--primary --json`. Built-in plugins
+are `storybook` and `ladle`; any other environment is described by a workspace
+file at `.browsershot/plugins/<name>.json`. An entry name matches the catalog id
+exactly, or else `group/name` case-insensitively; a name that matches nothing
+refetches the catalog once and retries, and an ambiguous name is a usage error
+listing the candidates. Run `browsershot library list ui` to read the available
+entries instead of guessing them. For these runs `captured` is
+`{"kind": "library", "library": "ui", "entry": "button--primary"}`, and the PNG
+defaults to `.browsershot/captures/{library}/{entry}_{timestamp}.png`.
+
 See the repository [`README.md`](../../README.md) for uncommon flags and publishing details.
