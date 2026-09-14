@@ -121,8 +121,19 @@ function validateRequiredTextFlags(flags: Readonly<CaptureFlags>): void {
 
 function positiveInteger(name: string, raw: string): number {
   const value = Number(raw);
-  if (!Number.isInteger(value) || value <= 0) {
+  if (!Number.isSafeInteger(value) || value <= 0) {
     throw new UsageError(`--${name} must be a positive integer`);
+  }
+  return value;
+}
+
+function nonNegativeInteger(name: string, raw: string): number {
+  if (raw.trim() === "") {
+    throw new UsageError(`--${name} must be a non-negative integer`);
+  }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new UsageError(`--${name} must be a non-negative integer`);
   }
   return value;
 }
@@ -304,7 +315,9 @@ export function resolveRunOptions(input: ResolveRunOptionsInput): ResolvedRunOpt
         viewport,
         element,
         fullPage: flags["full-page"] === true,
-        delayMs: flags.delay === undefined ? 0 : positiveInteger("delay", flags.delay),
+        delayMs: flags.delay === undefined
+          ? profile.delay ?? 0
+          : nonNegativeInteger("delay", flags.delay),
         allowBlank: flags["allow-blank"] === true,
         allowStatus: flags["allow-status"] === true,
         authRedirect: resolveAuthRedirect(flags, profile, target),

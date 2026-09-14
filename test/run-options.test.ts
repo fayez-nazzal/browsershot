@@ -59,6 +59,12 @@ test("saved defaults and explicit replacements resolve once", () => {
   expect(result.publish).toEqual({ destination: "gdrive:explicit/", size: 1200, label: undefined });
   expect(result.report).toEqual({ json: true, autoOpen: true });
 });
+
+test("saved delay applies unless an explicit delay overrides it", () => {
+  expect(resolve("https://example.com", {}, { delay: 3000 }).capture.delayMs).toBe(3000);
+  expect(resolve("https://example.com", { delay: "0" }, { delay: 3000 }).capture.delayMs).toBe(0);
+  expect(resolve("https://example.com", { delay: "500" }, { delay: 3000 }).capture.delayMs).toBe(500);
+});
 test("saved withErrors enables error collection without a CLI flag", () => {
   expect(resolve("https://example.com", {}, { withErrors: true }).capture.withErrors).toBe(true);
   expect(resolve("https://example.com", { "with-errors": true }).capture.withErrors).toBe(true);
@@ -169,7 +175,8 @@ test("invalid flags and special precedence produce usage errors or overrides", (
     expect(() => resolve("https://example.com", flags)).toThrow(UsageError);
   }
   for (const flags of [
-    { size: "wide" }, { delay: "0" }, { "publish-size": "12.5", publish: "gdrive:x/" },
+    { size: "wide" }, { delay: "" }, { delay: " " }, { delay: "-1" },
+    { delay: "9007199254740993" }, { "publish-size": "12.5", publish: "gdrive:x/" },
   ] satisfies CaptureFlags[]) {
     expect(() => resolve("https://example.com", flags)).toThrow(UsageError);
   }

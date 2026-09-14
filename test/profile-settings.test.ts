@@ -11,13 +11,14 @@ import {
 test("the registry contains every persistent setting exactly once", () => {
   expect(PROFILE_SETTING_NAMES).toEqual([
     "baseUrl", "authUser", "authRedirect", "expectElement", "expectText", "element",
-    "output", "group", "label", "json", "autoOpen", "withErrors", "publish",
+    "output", "group", "label", "json", "autoOpen", "withErrors", "delay", "publish",
   ]);
   expect(Object.keys(PROFILE_SETTINGS)).toEqual([...PROFILE_SETTING_NAMES]);
   expect(PROFILE_SETTINGS.json.kind).toBe("boolean");
   expect(PROFILE_SETTINGS.autoOpen.kind).toBe("boolean");
   expect(PROFILE_SETTINGS.withErrors.kind).toBe("boolean");
   expect(PROFILE_SETTINGS.baseUrl.kind).toBe("string");
+  expect(PROFILE_SETTINGS.delay.kind).toBe("positive-integer");
 });
 
 test("canonical names and legacy aliases resolve through one registry", () => {

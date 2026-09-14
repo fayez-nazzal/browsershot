@@ -21,6 +21,15 @@ test("config commands set and unset withErrors", () => {
   expect(run(root, "config", "show").stdout.toString()).not.toContain('"withErrors"');
 });
 
+test("delay saves as milliseconds and rejects non-positive values", () => {
+  const root = scratch();
+  expect(run(root, "config", "set", "delay", "3000").exitCode).toBe(0);
+  expect(run(root, "config", "show").stdout.toString()).toContain('"delay": 3000');
+  expect(run(root, "config", "set", "delay", "0").exitCode).toBe(2);
+  expect(run(root, "config", "set", "delay", "1.5").exitCode).toBe(2);
+  expect(run(root, "config", "set", "delay", "9007199254740993").exitCode).toBe(2);
+});
+
 test("config commands set show path and unset saved values", () => {
   const root = scratch();
   expect(run(root, "config", "set", "url", "http://localhost:8990/app").exitCode).toBe(0);

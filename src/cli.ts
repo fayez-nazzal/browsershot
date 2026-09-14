@@ -74,7 +74,8 @@ CAPTURE
   The fingerprint identifies a capture, it does not encrypt it; use --label for
   a readable state. The default name adds _q-{query} only when a query exists.
       --size <WxH>          Viewport size (default: 1440x900)
-      --delay <ms>          Extra wait after load before capture (default: 0)
+      --delay <ms>          Extra wait after load before capture (default: 0;
+                            configurable with config set delay)
       --element <selector>  Capture only the first matching visible element
       --no-element          Disable a saved element selector for this run
       --full-page           Capture the whole scrollable page
@@ -169,8 +170,8 @@ OUTPUT AND ERRORS
 
 CONFIGURATION
   Canonical saved names: baseUrl, authUser, authRedirect, expectElement,
-  expectText, element, output, group, label, json, autoOpen, withErrors and
-  publish. Use "config set withErrors" to enable error collection by default.
+  expectText, element, output, group, label, json, autoOpen, withErrors, delay
+  and publish. Use "config set withErrors" to enable error collection by default.
   Kebab-case aliases are accepted for set and unset, including base-url,
   url, auth-user, expect-element, expect-text, auto-open and with-errors.
   Reads never rewrite the config file and never create the workspace.

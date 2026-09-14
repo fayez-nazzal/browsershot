@@ -80,7 +80,11 @@ Run `browsershot --help` for the complete flag list and `browsershot --version` 
 <details>
 <summary>Saved defaults and one-run overrides</summary>
 
-`config set` saves project defaults; `config unset` removes a setting. Boolean settings are set without a value:
+`config set` saves project defaults; `config unset` removes a setting. Boolean settings are set without a value. Delay is saved as a positive integer in milliseconds:
+
+```sh
+browsershot config set delay 3000
+```
 
 ```sh
 browsershot config set json
@@ -90,7 +94,7 @@ browsershot config unset expectElement
 browsershot config path
 ```
 
-Canonical settings are `baseUrl`, `authUser`, `authRedirect`, `expectElement`, `expectText`, `element`, `output`, `group`, `label`, `json`, `autoOpen`, `withErrors`, and `publish`. Accepted aliases are `base-url`, `url`, `auth-user`, `auth-redirect`, `expect-element`, `expect-text`, `auto-open`, and `with-errors`. Legacy JSON `url` is read as `baseUrl`; reads do not rewrite or create the workspace, and explicit writes use canonical names. `browsershot config set withErrors` enables error collection for captures by default.
+Canonical settings are `baseUrl`, `authUser`, `authRedirect`, `expectElement`, `expectText`, `element`, `output`, `group`, `label`, `json`, `autoOpen`, `withErrors`, `delay`, and `publish`. Accepted aliases are `base-url`, `url`, `auth-user`, `auth-redirect`, `expect-element`, `expect-text`, `auto-open`, and `with-errors`. Legacy JSON `url` is read as `baseUrl`; reads do not rewrite or create the workspace, and explicit writes use canonical names. `browsershot config set withErrors` enables error collection for captures by default. Saved delay applies when `--delay` is omitted; an explicit `--delay` wins.
 
 Flags override saved defaults. Per-run disabling flags include `--no-auth`, `--no-auth-redirect`, `--no-expect`, `--no-element`, `--no-json`, and `--no-auto-open`. Positive and negative flags for the same setting conflict. Explicit `--expect-text` or `--expect-element` replaces the entire saved expectation set; both explicit checks must pass when both are supplied. `--no-expect` disables content assertions, not HTTP or blank-page guards.
 

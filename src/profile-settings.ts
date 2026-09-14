@@ -14,12 +14,13 @@ export interface ProfileConfig {
   json?: boolean;
   autoOpen?: boolean;
   withErrors?: boolean;
+  delay?: number;
   publish?: string;
 }
 
 export type ProfileSettingName = keyof ProfileConfig;
 type ProfileSettingDefinition = {
-  kind: "string" | "boolean";
+  kind: "string" | "boolean" | "positive-integer";
   aliases?: readonly string[];
   validate?: (value: string) => void;
 };
@@ -54,6 +55,7 @@ export const PROFILE_SETTINGS: { [Name in ProfileSettingName]-?: ProfileSettingD
   json: { kind: "boolean" },
   autoOpen: { kind: "boolean", aliases: ["auto-open"] },
   withErrors: { kind: "boolean", aliases: ["with-errors"] },
+  delay: { kind: "positive-integer" },
   publish: { kind: "string" },
 };
 
@@ -85,6 +87,12 @@ function validateString(name: ProfileSettingName, value: string): void {
   }
 }
 
+function positiveInteger(name: ProfileSettingName, value: number): void {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new UsageError(`profile setting ${name} must be a positive integer`);
+  }
+}
+
 export function resolveProfileSettingName(name: string): ProfileSettingName | null {
   return PROFILE_SETTING_LOOKUP[name] ?? null;
 }
@@ -110,6 +118,11 @@ export function validateProfileConfig(input: unknown): ProfileConfig {
       if (typeof value !== "boolean") {
         throw new UsageError(`profile setting ${name} must be boolean`);
       }
+    } else if (definition.kind === "positive-integer") {
+      if (typeof value !== "number") {
+        throw new UsageError(`profile setting ${name} must be a positive integer`);
+      }
+      positiveInteger(name, value);
     } else {
       if (typeof value !== "string" || value.trim() === "") {
         throw new UsageError(`profile setting ${name} must be a non-empty string`);
@@ -127,7 +140,7 @@ export function validateProfileConfig(input: unknown): ProfileConfig {
 export function profileValueFromCommand(
   name: string,
   rawValue?: string,
-): { name: ProfileSettingName; value: string | true } {
+): { name: ProfileSettingName; value: string | number | true } {
   const resolvedName = resolveProfileSettingName(name);
   if (resolvedName === null) {
     throw new UsageError(`unknown profile setting: ${name}`);
@@ -141,6 +154,11 @@ export function profileValueFromCommand(
   }
   if (rawValue === undefined || rawValue.trim() === "") {
     throw new UsageError(`${name} needs a non-empty value`);
+  }
+  if (definition.kind === "positive-integer") {
+    const value = Number(rawValue);
+    positiveInteger(resolvedName, value);
+    return { name: resolvedName, value };
   }
   validateString(resolvedName, rawValue);
   return { name: resolvedName, value: rawValue };
