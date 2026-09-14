@@ -83,6 +83,7 @@ CAPTURE
       --no-auto-open        Disable a saved autoOpen setting for this run
       --with-errors         Write console errors and uncaught page errors to a
                             .console.json sidecar beside the PNG
+      --no-with-errors      Disable a saved withErrors setting for this run
       --json                Print one JSON result instead of a path
       --no-json             Disable a saved json setting for this run
 
@@ -241,6 +242,7 @@ export function parseCliArgs(argv: string[]) {
       "auth-purpose": { type: "string" },
       verbose: { type: "boolean", default: false },
       "with-errors": { type: "boolean", default: false },
+      "no-with-errors": { type: "boolean", default: false },
       delay: { type: "string" },
       act: { type: "string" },
       "allow-blank": { type: "boolean", default: false },
@@ -586,6 +588,7 @@ function captureFlagPresent(values: CaptureFlags): boolean {
     || values["full-page"] === true || values["allow-blank"] === true || values["allow-status"] === true
     || values["auto-open"] === true || values["no-element"] === true || values["no-expect"] === true
     || values["no-auth"] === true || values["no-auth-redirect"] === true || values["no-json"] === true
+    || values["no-with-errors"] === true
     || values["no-auto-open"] === true
   );
   const repeats = (values.box?.length ?? 0) > 0 || (values.marker?.length ?? 0) > 0;

@@ -67,6 +67,7 @@ test("saved delay applies unless an explicit delay overrides it", () => {
 });
 test("saved withErrors enables error collection without a CLI flag", () => {
   expect(resolve("https://example.com", {}, { withErrors: true }).capture.withErrors).toBe(true);
+  expect(resolve("https://example.com", { "no-with-errors": true }, { withErrors: true }).capture.withErrors).toBe(false);
   expect(resolve("https://example.com", { "with-errors": true }).capture.withErrors).toBe(true);
 });
 
@@ -93,7 +94,7 @@ test("negative flags disable saved state and conflict with explicit positives", 
     { "no-auth-redirect": true, "auth-redirect": "/login" },
     { "no-expect": true, "expect-text": "Ready" },
     { "no-expect": true, "expect-element": "#ready" },
-    { "no-json": true, json: true },
+    { "no-with-errors": true, "with-errors": true },
     { "no-auto-open": true, "auto-open": true },
     { output: "shot.png", label: "menu" },
     { output: "shot.png", group: "review" },

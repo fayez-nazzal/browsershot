@@ -37,8 +37,8 @@ Use flags when a capture needs more than a simple route:
   disables a saved element selector for one capture. It cannot be combined
   with `--full-page`.
 - `--expect-element` waits for a visible CSS element before actions.
-- `--no-auth`, `--no-expect`, `--no-json`, and `--no-auto-open` disable saved
-  settings for one capture.
+- `--no-auth`, `--no-expect`, `--no-json`, `--no-with-errors`, and
+  `--no-auto-open` disable saved settings for one capture.
 - `--json` prints one machine-readable result object and no successful-run
   human diagnostics on stderr; use it for scripts and coding agents.
 - `--with-errors` writes browser console errors and uncaught page exceptions to
@@ -46,8 +46,6 @@ Use flags when a capture needs more than a simple route:
   same records inline as `consoleErrors` and the sidecar path as
   `consoleErrorsJsonPath`; it is `null` unless the flag or saved `withErrors`
   setting is enabled. `browsershot config set withErrors` enables it by default.
-- `--auth` captures an authenticated page using `authstate`.
-- `--publish` sends the PNG to a saved or explicit destination.
 - `--group` collects related captures under a directory, such as `PR-123`.
 - `--label` describes the captured state, such as `menu-open`.
 - `--output` sets an exact path or template when group and label are not enough.
