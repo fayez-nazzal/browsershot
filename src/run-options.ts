@@ -128,6 +128,9 @@ function positiveInteger(name: string, raw: string): number {
 }
 
 function nonNegativeInteger(name: string, raw: string): number {
+  if (raw.trim() === "") {
+    throw new UsageError(`--${name} must be a non-negative integer`);
+  }
   const value = Number(raw);
   if (!Number.isSafeInteger(value) || value < 0) {
     throw new UsageError(`--${name} must be a non-negative integer`);

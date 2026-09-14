@@ -175,8 +175,8 @@ test("invalid flags and special precedence produce usage errors or overrides", (
     expect(() => resolve("https://example.com", flags)).toThrow(UsageError);
   }
   for (const flags of [
-    { size: "wide" }, { delay: "-1" }, { delay: "9007199254740993" },
-    { "publish-size": "12.5", publish: "gdrive:x/" },
+    { size: "wide" }, { delay: "" }, { delay: " " }, { delay: "-1" },
+    { delay: "9007199254740993" }, { "publish-size": "12.5", publish: "gdrive:x/" },
   ] satisfies CaptureFlags[]) {
     expect(() => resolve("https://example.com", flags)).toThrow(UsageError);
   }
