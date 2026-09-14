@@ -59,6 +59,10 @@ test("saved defaults and explicit replacements resolve once", () => {
   expect(result.publish).toEqual({ destination: "gdrive:explicit/", size: 1200, label: undefined });
   expect(result.report).toEqual({ json: true, autoOpen: true });
 });
+test("saved withErrors enables error collection without a CLI flag", () => {
+  expect(resolve("https://example.com", {}, { withErrors: true }).capture.withErrors).toBe(true);
+  expect(resolve("https://example.com", { "with-errors": true }).capture.withErrors).toBe(true);
+});
 
 test("no-element disables saved capture and element conflicts are usage errors", () => {
   expect(resolve("https://example.com", { "no-element": true }, { element: "#card" }).capture.element).toBeUndefined();
