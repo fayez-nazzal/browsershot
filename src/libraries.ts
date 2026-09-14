@@ -289,6 +289,15 @@ function authenticatedCatalogOrigin(baseUrl: string, catalogUrl: string): void {
   }
 }
 
+function sameOriginRedirect(url: string, location: string, origin: string): string {
+  const destination = new URL(location, url);
+  if (destination.origin !== origin) {
+    throw new UsageError("authenticated library catalog redirect must remain on the registered library origin");
+  }
+  return destination.toString();
+}
+
+
 
 export function readResolvedLibrary(
   root: string,
@@ -348,7 +357,6 @@ export function readCachedCatalog(root: string, library: string): CatalogEntry[]
     return null;
   }
 }
-
 export function writeCatalogCache(root: string, library: string, entries: CatalogEntry[]): void {
   const path = catalogCachePath(root, library);
   mkdirSync(join(root, ".browsershot", "cache"), { recursive: true });
@@ -356,15 +364,38 @@ export function writeCatalogCache(root: string, library: string, entries: Catalo
   atomicWrite(path, `${JSON.stringify(file, null, 2)}\n`);
 }
 
-async function fetchCatalogDocument(url: string, headers: Record<string, string>): Promise<unknown> {
-  const response = await fetch(url, { headers });
-  if (response.status === 401 || response.status === 403) {
-    throw new CatalogCredentialsRejected(response.status);
+
+async function fetchCatalogDocument(
+  url: string,
+  headers: Record<string, string>,
+  authenticatedOrigin?: string,
+): Promise<unknown> {
+  let currentUrl = url;
+  for (let redirects = 0; redirects <= 10; redirects += 1) {
+    const response = await fetch(currentUrl, {
+      headers,
+      redirect: authenticatedOrigin === undefined ? "follow" : "manual",
+    });
+    if (authenticatedOrigin !== undefined && response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location");
+      if (location === null) {
+        throw new Error(`HTTP ${response.status} redirect without a location`);
+      }
+      if (redirects === 10) {
+        throw new Error("too many catalog redirects");
+      }
+      currentUrl = sameOriginRedirect(currentUrl, location, authenticatedOrigin);
+      continue;
+    }
+    if (response.status === 401 || response.status === 403) {
+      throw new CatalogCredentialsRejected(response.status);
+    }
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return response.json();
   }
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
-  }
-  return response.json();
+  throw new Error("too many catalog redirects");
 }
 
 function compareEntries(a: CatalogEntry, b: CatalogEntry): number {
@@ -426,10 +457,15 @@ export async function fetchLibraryCatalog(input: {
       throw error;
     }
   }
-  const fetcher = input.fetcher ?? fetchCatalogDocument;
   let document: unknown;
   try {
-    document = await fetcher(url, headers);
+    document = input.fetcher !== undefined
+      ? await input.fetcher(url, headers)
+      : await fetchCatalogDocument(
+        url,
+        headers,
+        description.auth === undefined ? undefined : new URL(definition.baseUrl).origin,
+      );
   } catch (error) {
     if (error instanceof ExitError) {
       throw error;
