@@ -19,6 +19,8 @@ export interface SuccessSummary {
   inspectJsonPath: string | null;
   consoleErrorsJsonPath: string | null;
   consoleErrors: ConsoleErrorRecord[] | null;
+  networkObservabilityJsonPath?: string;
+  networkObservability?: unknown;
   inspected: unknown;
   publishedUrl: string | null;
   captured: CaptureIdentity;
@@ -72,16 +74,18 @@ export function sha256Hex(bytes: Uint8Array): string {
 
 export function inspectJsonPath(pngPath: string): string {
   let result = `${pngPath}.json`;
-  if (pngPath.toLowerCase().endsWith(".png")) {
-    result = `${pngPath.slice(0, -4)}.json`;
-  }
+  if (pngPath.toLowerCase().endsWith(".png")) result = `${pngPath.slice(0, -4)}.json`;
   return result;
 }
-
 export function consoleErrorsJsonPath(pngPath: string): string {
   const extension = pngPath.match(/\.([^.\\/]*)$/)?.[0];
   if (extension === undefined) return `${pngPath}.console.json`;
   return `${pngPath.slice(0, -extension.length)}.console.json`;
+}
+export function networkObservabilityJsonPath(pngPath: string): string {
+  const extension = pngPath.match(/\.([^.\\/]*)$/)?.[0];
+  if (extension === undefined) return `${pngPath}.network.json`;
+  return `${pngPath.slice(0, -extension.length)}.network.json`;
 }
 
 export function inspectSummary(record: ElementRecord, attr?: string): string {
@@ -204,15 +208,18 @@ function writeAndReport(
   options: ResolvedRunOptions,
   inspected: ElementRecord | null,
   consoleErrors: ConsoleErrorRecord[] | undefined,
+  network: unknown,
   png: Uint8Array,
   deps: RunCaptureDependencies,
   io: RunCaptureIO,
 ): SuccessSummary {
   const quiet = options.report.json;
   const out = options.outputPath;
-  if (options.capture.withErrors === true && options.inspectJsonPath != null
-    && resolvePath(options.inspectJsonPath) === resolvePath(consoleErrorsJsonPath(out))) {
-    throw new ExitError(`wrote ${out}, but inspection and console sidecars use the same path`, EXIT_WRITE_ERROR);
+  if ((options.capture.withErrors === true || network != null) && options.inspectJsonPath != null) {
+    const conflicting = options.capture.withErrors === true ? consoleErrorsJsonPath(out) : networkObservabilityJsonPath(out);
+    if (resolvePath(options.inspectJsonPath) === resolvePath(conflicting)) {
+      throw new ExitError(`wrote ${out}, but inspection and observability sidecars use the same path`, EXIT_WRITE_ERROR);
+    }
   }
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, png);
@@ -220,8 +227,19 @@ function writeAndReport(
   success.outputPath = out;
   success.bytes = png.length;
   success.sha256 = sha256Hex(png);
-  success.captured = options.captured;
   success.consoleErrors = options.capture.withErrors === true ? consoleErrors ?? [] : null;
+  if (network != null) {
+    const sidecarPath = networkObservabilityJsonPath(out);
+    try {
+      mkdirSync(dirname(sidecarPath), { recursive: true });
+      writeFileSync(sidecarPath, `${JSON.stringify(network, null, 2)}\n`);
+    } catch (e) {
+      throw new ExitError(`wrote ${out}, but could not write ${sidecarPath}: ${(e as Error).message}`, EXIT_WRITE_ERROR);
+    }
+    success.networkObservabilityJsonPath = sidecarPath;
+    success.networkObservability = network;
+    if (!quiet) io.stderr(`browsershot: network observability json ${sidecarPath}\n`);
+  }
   if (!quiet) {
     io.stderr(`browsershot: wrote ${out} (${png.length} bytes)\n`);
     io.stderr(`browsershot: sha256 ${success.sha256}\n`);
@@ -314,7 +332,7 @@ export async function runCapture(options: ResolvedRunOptions, io: RunCaptureIO, 
       reportStderr,
     );
     const png = deps.drawAnnotations(captured.png, options.annotations.boxes, options.annotations.markers, runTmp);
-    return writeAndReport(options, captured.inspected, captured.consoleErrors, png, deps, io);
+    return writeAndReport(options, captured.inspected, captured.consoleErrors, captured.network, png, deps, io);
   } catch (error) {
     if (error instanceof ExitError) throw error;
     throw new ExitError((error as Error).message, EXIT_FAILED);

@@ -4,6 +4,7 @@ import { runActions, type Action, type HoverElementHandle } from "./act.ts";
 import { renderHoverCursor } from "./hover-cursor.ts";
 import { inspectElement, type ElementRecord, type InspectOptions } from "./inspect.ts";
 import { assertLanding } from "./landing.ts";
+import { createNetworkCollector, type NetworkAttempt, type NetworkCategory } from "./network-observability.ts";
 
 export interface CaptureOptions {
   url: string;
@@ -23,6 +24,7 @@ export interface CaptureOptions {
   log?: (message: string) => void;
   verbose?: boolean;
   withErrors?: boolean;
+  network?: readonly NetworkCategory[];
 }
 
 export interface ConsoleErrorRecord {
@@ -40,6 +42,7 @@ export interface CaptureResult {
   png: Uint8Array;
   inspected: ElementRecord | null;
   consoleErrors?: ConsoleErrorRecord[];
+  network?: NetworkAttempt;
 }
 
 export class AuthenticationCaptureFailure extends Error {
@@ -237,12 +240,14 @@ async function captureScreenshot(page: Page, o: CaptureOptions): Promise<Uint8Ar
 }
 
 export async function capture(o: CaptureOptions, deps: CaptureDeps = defaultCaptureDeps): Promise<CaptureResult> {
+  let network: NetworkAttempt | undefined;
   const session = await openSession(o, deps);
   let png: Uint8Array;
   let inspected: ElementRecord | null = null;
   const consoleErrors: ConsoleErrorRecord[] = [];
   try {
     const page = await session.context.newPage();
+    const collector = o.network == null || o.network.length === 0 ? undefined : createNetworkCollector(page, o.network);
     if (o.withErrors === true) {
       const recordError = (record: ConsoleErrorRecord): void => {
         if (consoleErrors.length >= MAX_CONSOLE_ERROR_RECORDS) {
@@ -294,11 +299,14 @@ export async function capture(o: CaptureOptions, deps: CaptureDeps = defaultCapt
       await renderHoverCursor(page, hoverTarget, o.fullPage);
     }
     o.log?.("capturing…");
+    collector?.markCaptureInitiated();
     png = await captureScreenshot(page, o);
+    network = collector?.finish();
   } finally {
     await closeSession(session);
   }
   const result: CaptureResult = { png, inspected };
   if (o.withErrors === true) result.consoleErrors = consoleErrors;
+  if (network != null) result.network = network;
   return result;
 }
