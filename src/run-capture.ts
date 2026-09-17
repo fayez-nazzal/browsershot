@@ -215,9 +215,12 @@ function writeAndReport(
 ): SuccessSummary {
   const quiet = options.report.json;
   const out = options.outputPath;
-  if ((options.capture.withErrors === true || network != null) && options.inspectJsonPath != null) {
-    const conflicting = options.capture.withErrors === true ? consoleErrorsJsonPath(out) : networkObservabilityJsonPath(out);
-    if (resolvePath(options.inspectJsonPath) === resolvePath(conflicting)) {
+  if (options.inspectJsonPath != null) {
+    const sidecars = [
+      ...(options.capture.withErrors === true ? [consoleErrorsJsonPath(out)] : []),
+      ...(network != null ? [networkObservabilityJsonPath(out)] : []),
+    ];
+    if (sidecars.some((path) => resolvePath(options.inspectJsonPath!) === resolvePath(path))) {
       throw new ExitError(`wrote ${out}, but inspection and observability sidecars use the same path`, EXIT_WRITE_ERROR);
     }
   }
@@ -227,6 +230,7 @@ function writeAndReport(
   success.outputPath = out;
   success.bytes = png.length;
   success.sha256 = sha256Hex(png);
+  success.captured = options.captured;
   success.consoleErrors = options.capture.withErrors === true ? consoleErrors ?? [] : null;
   if (network != null) {
     const sidecarPath = networkObservabilityJsonPath(out);

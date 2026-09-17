@@ -82,6 +82,14 @@ function resolveDeliverySource(response: unknown): DeliverySource {
   }
   return "unknown";
 }
+function safeQuery(raw: string, state: { redacted: boolean; truncated?: boolean }): RedactedValue {
+  try {
+    const safe = safeUrl(raw, state).value;
+    return redact(new URL(safe).search, false, state);
+  } catch {
+    return redact("", false, state);
+  }
+}
 
 export function createNetworkCollector(page: Page, categories: readonly NetworkCategory[], attempt = 1) {
   const enabled = new Set(categories);
@@ -97,15 +105,31 @@ export function createNetworkCollector(page: Page, categories: readonly NetworkC
   const resources: NetworkRequestRecord[] = []; const api: NetworkRequestRecord[] = [];
   const onRequest = (request: Request) => {
     const category = classify(request.resourceType()); if (!enabled.has(category)) return;
+    const list = category === "api" ? api : resources;
+    if (list.length >= MAX_RECORDS) { trunc[category] = (trunc[category] ?? 0) + 1; return; }
     try {
       const state = { redacted: false, truncated: false }; const raw = request.url(); const parsed = new URL(raw);
       const query = [...parsed.searchParams.entries()].map(([key, item]) => ({ key: redact(key, SENSITIVE_URL.test(key), state), value: redact(item, SENSITIVE_URL.test(key), state) }));
-      const record: NetworkRequestRecord = { kind: "http", method: redact(request.method(), false, state), url: safeUrl(raw, state), query, queryRaw: redact(parsed.search, false, state), requestHeaders: headerRecord(request.headers(), state), requestBody: request.postData() == null ? undefined : redact(request.postData(), /password|token|secret|key/i.test(request.postData() ?? ""), state), frame: frameContext(request, state), resourceType: request.resourceType(), timing: { startedAtMs: Date.now() - started, startedAt: nowIso() }, deliverySource: "unknown", outcome: "pending", redactionApplied: state.redacted, ...(state.truncated ? { truncated: true } : {}) };
+      const record: NetworkRequestRecord = { kind: "http", method: redact(request.method(), false, state), url: safeUrl(raw, state), query, queryRaw: safeQuery(raw, state), requestHeaders: headerRecord(request.headers(), state), requestBody: request.postData() == null ? undefined : redact(request.postData(), /password|token|secret|key/i.test(request.postData() ?? ""), state), frame: frameContext(request, state), resourceType: request.resourceType(), timing: { startedAtMs: Date.now() - started, startedAt: nowIso() }, deliverySource: "unknown", outcome: "pending", redactionApplied: state.redacted, ...(state.truncated ? { truncated: true } : {}) };
       requests.set(request, record); add(category, record);
     } catch (error) { diagnostics.push({ kind: "collection", message: `request observation failed: ${(error as Error).message}` }); }
   };
-  const finish = (request: Request, outcome: HttpOutcome, response?: Response) => { const record = requests.get(request); if (!record) return; const end = Date.now(); record.outcome = outcome; record.timing.endedAtMs = end - started; record.timing.durationMs = record.timing.endedAtMs - record.timing.startedAtMs; record.timing.endedAt = nowIso(); if (response) { record.response = { status: response.status(), statusText: redact(response.statusText()), reference: redact(`${response.status()} ${response.url()}`) }; record.deliverySource = resolveDeliverySource(response); } else if (outcome === "failed") record.failure = redact(request.failure()?.errorText ?? "unknown"); };
+  const finish = (request: Request, outcome: HttpOutcome, response?: Response) => { const record = requests.get(request); if (!record) return; const end = Date.now(); record.outcome = outcome; record.timing.endedAtMs = end - started; record.timing.durationMs = record.timing.endedAtMs - record.timing.startedAtMs; record.timing.endedAt = nowIso(); if (response) { const state = { redacted: false, truncated: false }; record.response = { status: response.status(), statusText: redact(response.statusText(), false, state), reference: safeUrl(response.url(), state) }; record.deliverySource = resolveDeliverySource(response); record.redactionApplied = record.redactionApplied || state.redacted; } else if (outcome === "failed") record.failure = redact(request.failure()?.errorText ?? "unknown"); };
   if (enabled.has("resources") || enabled.has("api")) { page.on("request", onRequest); page.on("response", response => finish(response.request(), "completed", response)); page.on("requestfailed", request => finish(request, request.failure()?.errorText?.toLowerCase().includes("abort") ? "aborted" : "failed")); }
-  if (enabled.has("websockets")) page.on("websocket", (socket: WebSocket) => { const state = { redacted: false, truncated: false }; const record: WebSocketRecord = { kind: "websocket", url: safeUrl(socket.url(), state), startedAtMs: Date.now() - started, startedAt: nowIso(), outcome: "open", messages: [], redactionApplied: state.redacted }; if (websockets.length < MAX_RECORDS) websockets.push(record); else trunc.websockets = (trunc.websockets ?? 0) + 1; const message = (direction: "sent" | "received") => (payload: string | Buffer) => { if (record.messages.length >= MAX_MESSAGES) { record.messagesTruncated = (record.messagesTruncated ?? 0) + 1; return; } const size = typeof payload === "string" ? payload.length : payload.byteLength; record.messages.push({ direction, type: typeof payload === "string" ? "text" : "binary", size, elapsedMs: Date.now() - started, at: nowIso() }); }; socket.on("framesent", message("sent")); socket.on("framereceived", message("received")); socket.on("close", () => { record.outcome = "closed"; record.endedAtMs = Date.now() - started; record.endedAt = nowIso(); }); socket.on("socketerror", () => { record.outcome = "failed"; }); });
-  return { markCaptureInitiated() { const cutoffElapsedMs = Date.now() - started; return { cutoffElapsedMs, captureInitiatedAt: nowIso() }; }, finish(): NetworkAttempt { const marker = this.markCaptureInitiated(); return { attempt, startedAt: startedWall.toISOString(), cutoffAt: marker.captureInitiatedAt, ...marker, ...(enabled.has("resources") ? { resources } : {}), ...(enabled.has("api") ? { api } : {}), ...(enabled.has("websockets") ? { websockets } : {}), ...(diagnostics.length ? { diagnostics } : {}), ...(Object.keys(trunc).length ? { recordsTruncated: trunc } : {}), redactionNotice: "Known-sensitive values are redacted; redaction does not detect every secret." }; } };
+  if (enabled.has("websockets")) page.on("websocket", (socket: WebSocket) => {
+    if (websockets.length >= MAX_RECORDS) { trunc.websockets = (trunc.websockets ?? 0) + 1; return; }
+    const state = { redacted: false, truncated: false };
+    const record: WebSocketRecord = { kind: "websocket", url: safeUrl(socket.url(), state), startedAtMs: Date.now() - started, startedAt: nowIso(), outcome: "open", messages: [], redactionApplied: state.redacted };
+    websockets.push(record);
+    const message = (direction: "sent" | "received") => (payload: string | Buffer) => {
+      if (record.messages.length >= MAX_MESSAGES) { record.messagesTruncated = (record.messagesTruncated ?? 0) + 1; return; }
+      const size = typeof payload === "string" ? payload.length : payload.byteLength;
+      record.messages.push({ direction, type: typeof payload === "string" ? "text" : "binary", size, elapsedMs: Date.now() - started, at: nowIso() });
+    };
+    socket.on("framesent", message("sent")); socket.on("framereceived", message("received"));
+    socket.on("close", () => { record.outcome = "closed"; record.endedAtMs = Date.now() - started; record.endedAt = nowIso(); });
+    socket.on("socketerror", () => { record.outcome = "failed"; });
+  });
+  let captureMarker: { cutoffElapsedMs: number; captureInitiatedAt: string } | undefined;
+  return { markCaptureInitiated() { captureMarker ??= { cutoffElapsedMs: Date.now() - started, captureInitiatedAt: nowIso() }; return captureMarker; }, finish(): NetworkAttempt { const marker = captureMarker ?? this.markCaptureInitiated(); return { attempt, startedAt: startedWall.toISOString(), cutoffAt: marker.captureInitiatedAt, ...marker, ...(enabled.has("resources") ? { resources } : {}), ...(enabled.has("api") ? { api } : {}), ...(enabled.has("websockets") ? { websockets } : {}), ...(diagnostics.length ? { diagnostics } : {}), ...(Object.keys(trunc).length ? { recordsTruncated: trunc } : {}), redactionNotice: "Known-sensitive values are redacted; redaction does not detect every secret." }; } };
 }
