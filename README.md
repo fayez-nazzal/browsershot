@@ -285,6 +285,17 @@ browsershot /pricing --publish gdrive:other/dir/
 Bare `--publish` needs a saved destination and otherwise fails before capture. Saving `publish` alone does not upload every capture. `--publish-size <px>` sets embed width and `--publish-label <text>` sets alt text. The PNG remains on a publishing failure (exit `5`).
 
 </details>
+<details>
+<summary>Network observability</summary>
+
+Use explicit category flags: `--with-resources`, `--with-api` (XHR and Fetch), and `--with-websockets`; each has a matching `--no-*` override. Saved booleans are `withResources`, `withApi`, and `withWebsockets`. Nothing is collected unless a category is enabled.
+
+Enabled captures add `networkObservability` and `networkObservabilityJsonPath` to JSON and write `<png-basename>.network.json`. HTTP records preserve individual attempts, child-frame attribution, resource type, request data, response status, delivery source (`network`, `cache`, `service-worker`, or `unknown`), outcome (`completed`, `failed`, `aborted`, or `pending`), and elapsed plus ISO-8601 UTC timestamps. WebSockets include lifecycle and bounded message direction/type/size/timing, never contents. The cutoff marker is taken immediately before full-page or element screenshot capture.
+
+Known-sensitive header names and URL/query/body locations are replaced with `[REDACTED]` (authorization, cookies, proxy credentials, API keys, tokens, secrets, and password-like names). This baseline cannot detect every secret. Limits are 1,000 HTTP/WebSocket records, 200 messages per socket, and 8,192 characters per field; truncation counters and collection diagnostics remain visible and do not fail a valid screenshot. Human mode keeps the PNG path first on stdout and reports the sidecar on stderr. JSON emits only after sidecar writing succeeds.
+
+</details>
+
 
 ## Help
 

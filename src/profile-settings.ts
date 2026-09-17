@@ -14,6 +14,9 @@ export interface ProfileConfig {
   json?: boolean;
   autoOpen?: boolean;
   withErrors?: boolean;
+  withResources?: boolean;
+  withApi?: boolean;
+  withWebsockets?: boolean;
   delay?: number;
   publish?: string;
 }
@@ -55,6 +58,9 @@ export const PROFILE_SETTINGS: { [Name in ProfileSettingName]-?: ProfileSettingD
   json: { kind: "boolean" },
   autoOpen: { kind: "boolean", aliases: ["auto-open"] },
   withErrors: { kind: "boolean", aliases: ["with-errors"] },
+  withResources: { kind: "boolean", aliases: ["with-resources"] },
+  withApi: { kind: "boolean", aliases: ["with-api"] },
+  withWebsockets: { kind: "boolean", aliases: ["with-websockets"] },
   delay: { kind: "positive-integer" },
   publish: { kind: "string" },
 };

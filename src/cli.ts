@@ -84,9 +84,14 @@ CAPTURE
       --with-errors         Write console errors and uncaught page errors to a
                             .console.json sidecar beside the PNG
       --no-with-errors      Disable a saved withErrors setting for this run
+      --with-resources      Collect ordinary HTTP resource attempts
+      --no-with-resources   Disable a saved withResources setting
+      --with-api            Collect XHR and Fetch attempts
+      --no-with-api         Disable a saved withApi setting
+      --with-websockets     Collect WebSocket lifecycle and message metadata
+      --no-with-websockets  Disable a saved withWebsockets setting
       --json                Print one JSON result instead of a path
       --no-json             Disable a saved json setting for this run
-
   Defaults are the load event, a 30-second navigation timeout, and a 1440x900
   viewport at 2x device scale. Each capture uses one browser launch and one
   screenshot.
@@ -235,14 +240,20 @@ export function parseCliArgs(argv: string[]) {
       "no-element": { type: "boolean", default: false },
       setup: { type: "string" },
       "full-page": { type: "boolean", default: false },
+      "with-errors": { type: "boolean", default: false },
+      "no-with-errors": { type: "boolean", default: false },
+      "with-resources": { type: "boolean", default: false },
+      "no-with-resources": { type: "boolean", default: false },
+      "with-api": { type: "boolean", default: false },
+      "no-with-api": { type: "boolean", default: false },
+      "with-websockets": { type: "boolean", default: false },
+      "no-with-websockets": { type: "boolean", default: false },
       auth: { type: "boolean", default: false },
       "auth-user": { type: "string" },
       "auth-credentials": { type: "string" },
       "auth-redirect": { type: "string" },
       "auth-purpose": { type: "string" },
       verbose: { type: "boolean", default: false },
-      "with-errors": { type: "boolean", default: false },
-      "no-with-errors": { type: "boolean", default: false },
       delay: { type: "string" },
       act: { type: "string" },
       "allow-blank": { type: "boolean", default: false },

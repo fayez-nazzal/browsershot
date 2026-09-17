@@ -17,18 +17,12 @@ import { DEFAULT_EMBED_WIDTH } from "./publish.ts";
 export interface CaptureFlags {
   output?: string; group?: string; label?: string; size?: string;
   "full-page"?: boolean; element?: string; "no-element"?: boolean; setup?: string; delay?: string; verbose?: boolean; "with-errors"?: boolean; "no-with-errors"?: boolean;
-  auth?: boolean; "auth-user"?: string; "auth-credentials"?: string;
-  "auth-redirect"?: string; "auth-purpose"?: string;
-  "no-auth"?: boolean; "no-auth-redirect"?: boolean;
-  "expect-text"?: string; "expect-element"?: string; "no-expect"?: boolean;
-  "allow-blank"?: boolean; "allow-status"?: boolean;
-  act?: string; inspect?: string; "inspect-attr"?: string;
-  "inspect-json"?: string; "inspect-note"?: string;
-  box?: string[]; marker?: string[];
-  json?: boolean; "no-json"?: boolean; "no-auto-open"?: boolean;
-  "auto-open"?: boolean;
-  publish?: string; "publish-size"?: string; "publish-label"?: string;
-  plugin?: string; ready?: string; scope?: string;
+  "with-resources"?: boolean; "no-with-resources"?: boolean; "with-api"?: boolean; "no-with-api"?: boolean; "with-websockets"?: boolean; "no-with-websockets"?: boolean;
+  auth?: boolean; "auth-user"?: string; "auth-credentials"?: string; "auth-redirect"?: string; "auth-purpose"?: string;
+  "no-auth"?: boolean; "no-auth-redirect"?: boolean; "expect-text"?: string; "expect-element"?: string; "no-expect"?: boolean;
+  "allow-blank"?: boolean; "allow-status"?: boolean; act?: string; inspect?: string; "inspect-attr"?: string; "inspect-json"?: string; "inspect-note"?: string;
+  box?: string[]; marker?: string[]; json?: boolean; "no-json"?: boolean; "no-auto-open"?: boolean; "auto-open"?: boolean;
+  publish?: string; "publish-size"?: string; "publish-label"?: string; plugin?: string; ready?: string; scope?: string;
 }
 
 type CaptureRunOptions = Omit<CaptureOptions, "cookiesPath" | "log">;
@@ -95,6 +89,9 @@ function validateConflicts(flags: Readonly<CaptureFlags>): void {
   }
   if (flags["no-auto-open"] === true && flags["auto-open"] === true) {
     throw new UsageError("conflict between --no-auto-open and --auto-open");
+  }
+  for (const [positive, negative] of [["with-resources", "no-with-resources"], ["with-api", "no-with-api"], ["with-websockets", "no-with-websockets"]] as const) {
+    if (flags[positive] === true && flags[negative] === true) throw new UsageError(`conflict between --${negative} and --${positive}`);
   }
   if (flags.output !== undefined && (flags.group !== undefined || flags.label !== undefined)) {
     throw new UsageError("--output cannot be combined with --group or --label");
@@ -234,13 +231,17 @@ function resolvePublish(
   return { destination, size, label: flags["publish-label"] };
 }
 
+function resolveNetwork(flags: Readonly<CaptureFlags>, profile: Readonly<ProfileConfig>): CaptureRunOptions["network"] {
+  const result: ("resources" | "api" | "websockets")[] = [];
+  if (flags["no-with-resources"] !== true && (flags["with-resources"] === true || profile.withResources === true)) result.push("resources");
+  if (flags["no-with-api"] !== true && (flags["with-api"] === true || profile.withApi === true)) result.push("api");
+  if (flags["no-with-websockets"] !== true && (flags["with-websockets"] === true || profile.withWebsockets === true)) result.push("websockets");
+  return result.length === 0 ? undefined : result;
+}
+
 function resolveInspect(flags: Readonly<CaptureFlags>): CaptureRunOptions["inspect"] {
   if (flags.inspect === undefined) return undefined;
-  return {
-    selector: flags.inspect,
-    attr: flags["inspect-attr"],
-    timeoutMs: NAVIGATION_TIMEOUT_MS,
-  };
+  return { selector: flags.inspect, attr: flags["inspect-attr"], timeoutMs: NAVIGATION_TIMEOUT_MS };
 }
 
 export function normalizeUrl(url: string): string {
@@ -331,6 +332,7 @@ export function resolveRunOptions(input: ResolveRunOptionsInput): ResolvedRunOpt
         inspectFooter: flags["inspect-note"],
         verbose: flags.verbose === true,
         withErrors: flags["no-with-errors"] === true ? false : flags["with-errors"] === true || profile.withErrors === true,
+        network: resolveNetwork(flags, profile),
       },
       auth,
       outputPath,
