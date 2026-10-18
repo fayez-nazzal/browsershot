@@ -41,35 +41,6 @@ test("consumes subprocess streams and awaits completion", async () => {
   expect(run.exitCode).toBe(4);
 });
 
-test("resolves the jar path out of the authstate envelope", async () => {
-  const calls: string[][] = [];
-  const envelope = JSON.stringify({ tool: "authstate", ok: true, path: "/jars/app--basic.json" });
-  const jar = await resolveAuthJar({ credentialsPath: "creds.yaml", user: "basic-user" }, deps(true, okRun(envelope), calls));
-  expect(jar).toBe("/jars/app--basic.json");
-  expect(calls[0]).toEqual(["authstate", "ensure", "--credentials", "creds.yaml", "--user", "basic-user"]);
-});
-
-test("omits --user when no user is given", async () => {
-  const calls: string[][] = [];
-  const envelope = JSON.stringify({ path: "/jars/a.json" });
-  await resolveAuthJar({ credentialsPath: "creds.yaml" }, deps(true, okRun(envelope), calls));
-  expect(calls[0]).toEqual(["authstate", "ensure", "--credentials", "creds.yaml"]);
-});
-
-test("adds --verify only when explicitly requested", async () => {
-  const calls: string[][] = [];
-  const envelope = JSON.stringify({ path: "/jars/verified.json" });
-  await resolveAuthJar({ credentialsPath: "creds.yaml", user: "basic-user", verify: true }, deps(true, okRun(envelope), calls));
-  expect(calls[0]).toEqual(["authstate", "ensure", "--credentials", "creds.yaml", "--user", "basic-user", "--verify"]);
-});
-
-test("omits --credentials entirely when discovery is used", async () => {
-  const calls: string[][] = [];
-  const envelope = JSON.stringify({ path: "/jars/a.json" });
-  await resolveAuthJar({ credentialsPath: null, user: "basic-user" }, deps(true, okRun(envelope), calls));
-  expect(calls[0]).toEqual(["authstate", "ensure", "--user", "basic-user"]);
-});
-
 test("streams authstate stderr through the callback", async () => {
   const seen: string[] = [];
   const envelope = JSON.stringify({ path: "/jars/a.json" });

@@ -254,7 +254,7 @@ Exit codes: `0` success; `1` capture or page-guard failure; `2` usage, conflicti
 <details>
 <summary>Authenticated pages — optional Authstate setup</summary>
 
-[Authstate](https://github.com/fayez-nazzal/authstate) handles installation and credential setup. Browsershot delegates login rather than implementing it. Named users require an Authstate executable supporting `ensure --user`.
+[Authstate](https://github.com/fayez-nazzal/authstate) handles installation and credential setup. Browsershot delegates login rather than implementing it. Named users are passed to `authstate ensure --purpose <name>`; Browsershot does not require an Authstate `--user` alias.
 
 ```sh
 browsershot /account --auth-user member
@@ -263,6 +263,15 @@ browsershot /account --auth-user member
 `--auth-user` and `--auth-credentials <path>` imply `--auth`; user names are keys in `.testing-credentials.yaml`. Discovery searches upward from the invocation directory and stops at the repository boundary. Credential and storage-state paths are not saved in the Browsershot profile; keep these files private. `--no-auth` disables saved authentication.
 
 When authentication is requested, a 401/403 triggers one session verification and retry. `--auth-redirect /users/sign_in` opts into the same treatment for a redirect URL containing that literal text. Save it with `config set authRedirect /users/sign_in`, or disable it for one run with `--no-auth-redirect`. No redirect matching is implicit.
+
+For Google or another SSO provider, configure that entry with `login: human` and no password in Authstate. The human completes the first sign-in in its visible browser:
+
+```sh
+authstate login --credentials .testing-credentials.yaml --purpose member --headed
+browsershot /account --auth-user member --json
+```
+
+Authstate waits for its configured authenticated-only `signed_in_when` URL or selector, saves the real session, and later reuses it without a password. Browsershot only calls `ensure`; it never opens an interactive sign-in. If Authstate refuses with `human-step-required` (exit `6`), repeat the `login` command. `authstate login --human-timeout 600000 ...` allows a longer human sign-in wait.
 
 </details>
 

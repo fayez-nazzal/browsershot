@@ -82,7 +82,7 @@ function buildArgs(request: AuthJarRequest): string[] {
     args.push(request.credentialsPath);
   }
   if (request.user != null) {
-    args.push("--user");
+    args.push("--purpose");
     args.push(request.user);
   }
   if (request.verify === true) {
