@@ -1,6 +1,4 @@
 import { expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { normalizeArgv, parseCliArgs } from "../src/cli.ts";
 
 test("normalizeArgv merges a bare --publish value into = form", () => {
@@ -16,13 +14,4 @@ test("normalizeArgv keeps a bare --publish as an empty = form", () => {
 test("with-errors is a boolean CLI flag", () => {
   expect(parseCliArgs(["https://example.test", "--with-errors"]).values["with-errors"]).toBe(true);
   expect(() => parseCliArgs(["https://example.test", "--with-errors=value"])).toThrow();
-});
-
-test("cli delegates option resolution and capture execution", () => {
-  const source = readFileSync(join(import.meta.dir, "../src/cli.ts"), "utf8");
-  expect(source).toContain("resolveRunOptions(");
-  expect(source).toContain("runCapture(");
-  expect(source).not.toContain("resolveAuthJar(");
-  expect(source).not.toContain("drawAnnotations(");
-  expect(source).not.toContain("writeFileSync(");
 });

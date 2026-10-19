@@ -10,6 +10,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - The `size` profile key. `browsershot config set size 360x520` saves a project
   viewport; `--size` and saved page or setup sizes keep precedence.
+- `browsershot open [<url-or-path>]` opens a headed Chromium window on a
+  persistent profile in `.browsershot/browser/`. With no argument it opens the
+  saved `baseUrl`, and the saved `size` sets the viewport. Cookies, sign-ins,
+  and localStorage persist between runs. Closing the window or pressing Ctrl-C
+  finishes the command with the profile flushed. Closing also saves the
+  profile's cookies and localStorage to `.browsershot/open-state.json`, and
+  captures start from that snapshot, so a theme or sign-in set by hand shows up
+  in screenshots. Captures stay headless and isolated; `--no-auth` ignores the
+  snapshot, and the authstate jar wins over it.
+  With a saved `authUser`, the authstate jar for that user is applied before the
+  page loads, as captures do.
 
 ### Fixed
 

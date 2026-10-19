@@ -35,6 +35,16 @@ centered on the hovered element's bottom edge. Hovered links also show a
 black-and-white URL preview centered directly below the cursor; the preview
 is ellipsized for long URLs and stays within the capture bounds.
 
+Open a headed browser when a person must sign in or change a setting that a
+script cannot: `browsershot open https://example.com`, or `browsershot open` for
+the saved `baseUrl`. It blocks until the window closes or Ctrl-C; the profile in
+`.browsershot/browser/` keeps cookies and localStorage. Start it only when the
+user is present. Closing the window saves those cookies and localStorage to
+`.browsershot/open-state.json`; later captures start from that snapshot, so a
+theme set by hand applies (`--no-auth` ignores it). Captures stay headless and
+never use the live profile.
+With a saved `authUser`, it applies that user's authstate jar first, as captures do.
+
 Complete URLs do not require `.browsershot/config.json`. Quick paths require a known saved `baseUrl`; do not guess it. The legacy saved key `url` is accepted. A quick path changes only URL resolution; every option behaves the same for a complete URL, and malformed saved config is a usage error for either form, before capture starts. Save settling time with `browsershot config set delay 3000`; an explicit `--delay` overrides it for one run. Save a project viewport with `browsershot config set size 360x520`; `--size` and saved page or setup sizes override it. Saved auth, assertions, output, JSON, and viewer settings can be overridden for one run with `--no-auth`, `--no-expect`, `--output`, `--no-json`, or `--no-auto-open`.
 
 Captures default to

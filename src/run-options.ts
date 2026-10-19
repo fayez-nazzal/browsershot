@@ -26,13 +26,14 @@ export interface CaptureFlags {
   publish?: string; "publish-size"?: string; "publish-label"?: string; plugin?: string; ready?: string; scope?: string;
 }
 
-type CaptureRunOptions = Omit<CaptureOptions, "cookiesPath" | "log">;
+type CaptureRunOptions = Omit<CaptureOptions, "cookiesPath" | "openStatePath" | "log">;
 
 export interface ResolvedRunOptions {
   cwd: string;
   captured: CaptureIdentity;
   capture: CaptureRunOptions;
-  auth: { requested: boolean; credentialsPath?: string; user?: string };
+  // openState: seed the capture with the snapshot saved by `browsershot open`; false only for --no-auth.
+  auth: { requested: boolean; openState: boolean; credentialsPath?: string; user?: string };
   outputPath: string;
   inspectJsonPath?: string;
   annotations: { boxes: BoxAnnotation[]; markers: MarkerAnnotation[] };
@@ -167,12 +168,12 @@ function resolveAuth(
   profile: Readonly<ProfileConfig>,
   target?: CaptureTarget,
 ): ResolvedAuth {
-  if (flags["no-auth"] === true) return { requested: false };
+  if (flags["no-auth"] === true) return { requested: false, openState: false };
   const credentialsPath = flags["auth-credentials"];
   const user = flags["auth-user"] ?? target?.authUser ?? profile.authUser;
   const requested = flags.auth === true || credentialsPath !== undefined || user !== undefined;
-  if (!requested) return { requested: false };
-  return { requested: true, credentialsPath, user };
+  if (!requested) return { requested: false, openState: true };
+  return { requested: true, openState: true, credentialsPath, user };
 }
 
 function resolveAuthRedirect(

@@ -54,7 +54,7 @@ test("saved defaults and explicit replacements resolve once", () => {
   expect(result.capture).toMatchObject({
     url: "https://example.com/app/pricing", expectElement: "#ready", expectText: undefined, element: "#featured",
   });
-  expect(result.auth).toEqual({ requested: true, credentialsPath: "/tmp/creds.yaml", user: "member" });
+  expect(result.auth).toEqual({ requested: true, openState: true, credentialsPath: "/tmp/creds.yaml", user: "member" });
   expect(result.outputPath).toBe("/repo/explicit.png");
   expect(result.publish).toEqual({ destination: "gdrive:explicit/", size: 1200, label: undefined });
   expect(result.report).toEqual({ json: true, autoOpen: true });
@@ -259,4 +259,9 @@ test("resolveCaptureUrl keeps complete URLs independent of the saved base", () =
   expect(resolveCaptureUrl("https://other.example/pricing", profile)).toBe("https://other.example/pricing");
   expect(resolveCaptureUrl("/pricing", profile)).toBe("https://example.com/app/pricing");
   expect(() => resolveCaptureUrl("/pricing", {})).toThrow(/baseUrl/);
+});
+
+test("only --no-auth keeps captures from the open-window snapshot", () => {
+  expect(resolve("https://example.com", {}, {}).auth).toEqual({ requested: false, openState: true });
+  expect(resolve("https://example.com", { "no-auth": true }, { authUser: "member" }).auth).toEqual({ requested: false, openState: false });
 });

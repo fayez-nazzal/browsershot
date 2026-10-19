@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import { parseArgs } from "node:util";
+import { join } from "node:path";
 import packageJson from "../package.json";
 import { DEFAULT_EMBED_WIDTH } from "./publish.ts";
 import { ExitError, EXIT_FAILED, toUsageError, UsageError } from "./exit-codes.ts";
@@ -27,8 +28,15 @@ import {
   saveLibrary,
 } from "./libraries.ts";
 import { profilePaths, readProfile, setProfileValue, unsetProfileValue } from "./profile.ts";
-import { resolveRunOptions, type CaptureFlags } from "./run-options.ts";
+import { resolveCaptureUrl, resolveRunOptions, type CaptureFlags } from "./run-options.ts";
 import { runCapture } from "./run-capture.ts";
+import { runOpenWindow } from "./open-window.ts";
+import { openStatePath } from "./open-state.ts";
+import { discoverAuthCredentials, resolveAuthJar } from "./authstate.ts";
+import { ensureWorkspace } from "./workspace.ts";
+import { parseSize } from "./size.ts";
+import { VIEWPORT_HEIGHT, VIEWPORT_WIDTH } from "./capture.ts";
+import { chromium } from "playwright";
 
 export const VERSION = `${packageJson.version}-alpha`;
 
@@ -48,6 +56,15 @@ START HERE
   same for a quick path and a complete URL.
   Invalid saved configuration blocks both forms before capture starts.
 
+BROWSER
+  browsershot open [<url-or-path>]
+  Opens a headed Chromium window. With no argument it opens the saved baseUrl.
+  Cookies, sign-ins, and localStorage persist in .browsershot/browser between
+  runs. Close the window or press Ctrl-C to finish; the profile's cookies and
+  localStorage are then saved for captures, which stay headless and isolated
+  (--no-auth ignores them). The saved size sets the window viewport. A saved
+  authUser applies its authstate jar first.
+
 USAGE
   browsershot <url-or-path> [options]
   browsershot config set <name> [value]
@@ -56,6 +73,7 @@ USAGE
   browsershot page <page> [<element>] [--setup <name>]
   browsershot library <library> <entry>
   browsershot library add <library> <base-url> --plugin <name>
+  browsershot open [<url-or-path>]
 
 CAPTURE
   -o, --output <path>       Exact PNG path or template (advanced override)
@@ -738,6 +756,32 @@ async function runLibraryCaptureCommand(values: CaptureFlags, args: string[]): P
   await runCapture(resolved, io);
 }
 
+async function runOpenCommand(args: string[]): Promise<void> {
+  if (args.length > 1) {
+    throw new UsageError("open takes at most one <url-or-path>; run: browsershot --help");
+  }
+  const cwd = process.cwd();
+  const profile = readProfile(cwd);
+  const [target] = args;
+  let url = profile.baseUrl ?? null;
+  if (target !== undefined) {
+    url = resolveCaptureUrl(target, profile);
+  }
+  const size = profile.size === undefined ? null : parseSize(profile.size);
+  const viewport = size ?? { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT };
+  const workspace = ensureWorkspace(cwd);
+  let authJarPath: string | null = null;
+  if (profile.authUser !== undefined) {
+    const credentialsPath = discoverAuthCredentials(cwd);
+    writeStderr(`browsershot: using ${credentialsPath}\n`);
+    authJarPath = await resolveAuthJar({ credentialsPath, user: profile.authUser }, undefined, (chunk) => writeStderr(chunk));
+  }
+  await runOpenWindow(
+    { url, directory: join(workspace, "browser"), viewport, authJarPath, statePath: openStatePath(workspace), log: (message) => writeStderr(`${message}\n`) },
+    chromium.launchPersistentContext.bind(chromium),
+  );
+}
+
 async function main(): Promise<void> {
   const { values, positionals } = parse();
   if (values.help) {
@@ -750,6 +794,8 @@ async function main(): Promise<void> {
     await runPageCommand(values, positionals.slice(1));
   } else if (positionals[0] === "library") {
     await runLibraryCommand(values, positionals.slice(1));
+  } else if (positionals[0] === "open") {
+    await runOpenCommand(positionals.slice(1));
   } else {
     await runCaptureCommand(values, positionals);
   }

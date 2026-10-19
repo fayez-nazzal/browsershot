@@ -10,6 +10,7 @@ import type { ElementRecord } from "./inspect.ts";
 import { openFile } from "./open.ts";
 import { labelFromPath, publish, type PublishResult } from "./publish.ts";
 import type { ResolvedRunOptions } from "./run-options.ts";
+import { openStatePath } from "./open-state.ts";
 import { createRunTmpDir, ensureWorkspace, removeRunTmpDir } from "./workspace.ts";
 
 export interface SuccessSummary {
@@ -320,7 +321,7 @@ export async function runCapture(options: ResolvedRunOptions, io: RunCaptureIO, 
   const deps = withDefaults(overrides);
   const quiet = options.report.json;
   const reportStderr = quiet ? undefined : io.stderr;
-  ensureWorkspace(options.cwd);
+  const workspace = ensureWorkspace(options.cwd);
   const runTmp = createRunTmpDir(options.cwd);
   try {
     const auth = await prepareAuthentication(options, deps, reportStderr ?? (() => {}));
@@ -329,6 +330,7 @@ export async function runCapture(options: ResolvedRunOptions, io: RunCaptureIO, 
         ...options.capture,
         verbose: quiet ? false : options.capture.verbose,
         cookiesPath: auth.jarPath,
+        openStatePath: options.auth.openState ? openStatePath(workspace) : undefined,
         log: reportStderr == null ? undefined : (message) => reportStderr(`browsershot: ${message}\n`),
       },
       auth.retryCredentials,

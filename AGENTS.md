@@ -101,6 +101,21 @@ name, matching the catalog id or a case-insensitive `group/name`. Never guess
 entry names: `browsershot library list ui` prints the entries a library
 actually has. The default path is
 `.browsershot/captures/{library}/{entry}_{timestamp}.png`.
+
+## 5. Open a browser
+
+`browsershot open [<url-or-path>]` blocks while a person drives a headed window.
+Start it only when the user is present to sign in or change a setting. The
+command ends when the window closes or on Ctrl-C, and it writes progress to
+stderr only. It refuses to start while the profile in `.browsershot/browser/`
+is open in another window. Closing the window saves its cookies and
+localStorage to `.browsershot/open-state.json`, and later captures start from
+that snapshot (theme, sign-in); `--no-auth` ignores it. Captures never use the
+live profile.
+With a saved `authUser`, it applies that user's authstate jar before the page
+loads, the same as a capture. It needs `authstate` on PATH and a
+`.testing-credentials.yaml` above the project.
+
 ## Check the result
 
 A PNG only proves that a file was written. For reliable checks, use

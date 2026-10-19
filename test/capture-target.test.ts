@@ -42,7 +42,7 @@ test("target defaults become capture fields", () => {
     actions: [{ kind: "click", value: "#promo" }],
     viewport: { width: 1440, height: 900 },
   });
-  expect(resolved.auth).toEqual({ requested: true, credentialsPath: undefined, user: "member" });
+  expect(resolved.auth).toEqual({ requested: true, openState: true, credentialsPath: undefined, user: "member" });
 });
 
 test("explicit flags replace target defaults", () => {
@@ -68,7 +68,7 @@ test("negative flags clear target values", () => {
   expect(resolved.capture.element).toBeUndefined();
   expect(resolved.capture.expectElement).toBeUndefined();
   expect(resolved.capture.expectText).toBeUndefined();
-  expect(resolved.auth).toEqual({ requested: false });
+  expect(resolved.auth).toEqual({ requested: false, openState: false });
 });
 
 test("per-run act steps run after target steps in order", () => {

@@ -73,6 +73,31 @@ The order is **readiness → actions → inspection → screenshot**. `--inspect
 
 For agents, use JSON and sidecar fields for programmatic checks and the screenshot for visual review. Do not put raw PNG bytes in text context. See the bundled [`AGENTS.md`](AGENTS.md) and [`skills/browsershot/SKILL.md`](skills/browsershot/SKILL.md) for operational recipes.
 
+## Open a browser
+
+`browsershot open` opens a headed Chromium window on a profile saved in
+`.browsershot/browser/`. With no argument it opens the saved `baseUrl`; pass a
+complete URL or quick path to open that page instead:
+
+```sh
+browsershot open https://app.example.com
+```
+
+Sign in, change the theme, or set anything else by hand. The browser saves
+cookies, localStorage, and sign-ins to the profile as you go. Close the window
+or press Ctrl-C to finish.
+
+Closing also saves the profile's cookies and localStorage to
+`.browsershot/open-state.json`. Every later capture starts from that snapshot,
+so a theme or sign-in set by hand shows up in screenshots. Captures stay
+headless, isolated contexts and never touch the live profile; they see changes
+only after the window closes. `--no-auth` ignores the snapshot, and deleting the
+file resets it. IndexedDB is not part of the snapshot.
+
+With a saved `authUser`, `open` first applies that user's authstate jar, as a
+capture does; on a capture, the jar's values win over the snapshot. Each open writes the jar's cookies and localStorage values over
+the profile's values with the same names; other saved state stays.
+
 ## Reference
 
 Run `browsershot --help` for the complete flag list and `browsershot --version` for the version.

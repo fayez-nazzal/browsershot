@@ -1,9 +1,11 @@
+import { readFileSync } from "node:fs";
 import { chromium } from "playwright";
 import type { Browser, BrowserContext, LaunchOptions, Page } from "playwright";
 import { runActions, type Action, type HoverElementHandle } from "./act.ts";
 import { renderHoverCursor } from "./hover-cursor.ts";
 import { inspectElement, type ElementRecord, type InspectOptions } from "./inspect.ts";
 import { assertLanding } from "./landing.ts";
+import { mergeStorageState, readOpenState, type StorageStateLike } from "./open-state.ts";
 import { createNetworkCollector, type NetworkAttempt, type NetworkCategory } from "./network-observability.ts";
 
 export interface CaptureOptions {
@@ -13,6 +15,7 @@ export interface CaptureOptions {
   element?: string;
   delayMs: number;
   cookiesPath?: string;
+  openStatePath?: string;
   authRedirect?: string;
   allowBlank: boolean;
   inspect?: InspectOptions;
@@ -112,7 +115,7 @@ interface Session {
   browser: Browser;
 }
 
-function improveLaunchError(error: Error): Error {
+export function improveLaunchError(error: Error): Error {
   let result = error;
   if (/Executable doesn'?t exist|please run|install/i.test(error.message)) {
     result = new Error(`Chromium not found. Install it once with: bun playwright install chromium\n${error.message}`);
@@ -120,7 +123,18 @@ function improveLaunchError(error: Error): Error {
   return result;
 }
 
+// The authstate jar is passed as a path. When `browsershot open` saved a snapshot,
+// the two are merged in memory with the jar winning, so settings made by hand (a
+// theme) apply while a refreshed login is never shadowed by stale snapshot cookies.
+function resolveStorageState(o: CaptureOptions): string | StorageStateLike | undefined {
+  const snapshot = o.openStatePath == null ? null : readOpenState(o.openStatePath);
+  if (snapshot == null) return o.cookiesPath;
+  if (o.cookiesPath == null) return snapshot;
+  return mergeStorageState(snapshot, JSON.parse(readFileSync(o.cookiesPath, "utf8")) as StorageStateLike);
+}
+
 async function openSession(o: CaptureOptions, deps: CaptureDeps, extra: Record<string, unknown> = {}): Promise<Session> {
+  const storageState = resolveStorageState(o);
   o.log?.("launching chromium headless shell");
   let browser: Browser;
   try {
@@ -130,8 +144,8 @@ async function openSession(o: CaptureOptions, deps: CaptureDeps, extra: Record<s
   }
   const viewport = o.viewport ?? { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT };
   const contextOptions: Record<string, unknown> = { viewport, deviceScaleFactor: DEVICE_SCALE_FACTOR, ...extra };
-  if (o.cookiesPath != null) {
-    contextOptions.storageState = o.cookiesPath;
+  if (storageState != null) {
+    contextOptions.storageState = storageState;
   }
   const context = await browser.newContext(contextOptions);
   const session: Session = { context, browser };

@@ -24,3 +24,4 @@ build/
 AGENTS.override.md
 .npmrc
 package-lock.json
+.*.bun-build
