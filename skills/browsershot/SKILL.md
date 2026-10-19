@@ -23,6 +23,11 @@ Use `--element '#card'` to capture only the first matching visible element.
 Save it with `browsershot config set element '#card'`, or use `--no-element`
 for one full-page run. Element capture cannot be combined with `--full-page`.
 
+Use `--html` (optionally `--format`) when the markup and applicable CSS matter
+more than pixels: `browsershot /pricing --element '#card' --html --json` returns
+a self-contained document in the `html` field. It cannot be combined with
+`--box`, `--marker`, `--inspect-note`, `--publish`, or `--full-page`.
+
 Use `--act` for clicks, typing, key presses, waits, or hover states, and `--inspect` for evidence after those actions:
 
 ```sh

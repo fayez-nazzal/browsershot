@@ -102,3 +102,14 @@ test("structured names avoid Windows reserved path components", () => {
   expect(output).toContain("/_NUL/");
   expect(output).toContain("/_con__LPT1_");
 });
+
+test("html extension swaps the suffix for URL, page and library naming", () => {
+  const options = { capturesDirectory: "/repo/.browsershot/captures", url: "https://example.com/pricing?plan=pro", now };
+  expect(resolveOutputPath({ ...options, extension: "html" })).toMatch(/\/pricing_q-[^/]+_2026-09-05_14-30-12\.html$/);
+  expect(resolveOutputPath({ ...options, extension: "html", identity: { kind: "page", page: "checkout", element: "summary", setup: "empty" } }))
+    .toBe("/repo/.browsershot/captures/checkout/summary_empty_2026-09-05_14-30-12.html");
+  expect(resolveOutputPath({ ...options, extension: "html", identity: { kind: "library", library: "ui", entry: "button--primary" } }))
+    .toBe("/repo/.browsershot/captures/ui/button-primary_2026-09-05_14-30-12.html");
+  expect(resolveOutputPath({ ...options, identity: { kind: "library", library: "ui", entry: "button--primary" } })).toEndWith(".png");
+  expect(resolveOutputPath({ ...options, output: "/tmp/x.png", extension: "html" })).toBe("/tmp/x.png");
+});

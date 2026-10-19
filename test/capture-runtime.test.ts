@@ -111,7 +111,7 @@ test("capture launches the chromium headless shell once", async () => {
   const { launchBrowser, calls } = scriptedLauncher(fakeBrowser(fakePage()), []);
   const result = await capture(BASE_OPTIONS, { launchBrowser });
   expect(calls).toEqual([{ headless: true }]);
-  expect(result.png.length).toBe(4);
+  expect(result.artifact.kind === "png" ? result.artifact.png.length : -1).toBe(4);
 });
 
 test("capture forwards launch progress to the log", async () => {
@@ -140,7 +140,7 @@ test("element capture screenshots the first visible matching element", async () 
   const events: string[] = [];
   const { launchBrowser } = scriptedLauncher(fakeBrowser(elementPage(events)), []);
   const result = await capture({ ...BASE_OPTIONS, element: "#card" }, { launchBrowser });
-  expect(result.png).toEqual(new Uint8Array([1, 2]));
+  expect(result.artifact).toEqual({ kind: "png", png: new Uint8Array([1, 2]) });
   expect(events).toEqual(["locator:css=#card:visible", "waitFor", "elementScreenshot"]);
 });
 

@@ -8,6 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- `--html` captures self-contained, minimal HTML instead of a PNG for URL, `page`, and `library` captures: the element (or page body), the `<html>`/`<body>` shell, and only the CSS rules that apply, with media queries resolved at the capture size and theme. `--format` pretty-prints it. The file is `<name>.html`, stdout is the HTML, and `--json` results carry a new `html` field (`null` for PNG captures). `html` and `format` are saved settings; `--no-html` and `--no-format` disable them for one run. `--html` cannot be combined with `--box`, `--marker`, `--inspect-note`, `--publish`, or `--full-page`.
 - The `size` profile key. `browsershot config set size 360x520` saves a project
   viewport; `--size` and saved page or setup sizes keep precedence.
 - `browsershot open [<url-or-path>]` opens a headed Chromium window on a

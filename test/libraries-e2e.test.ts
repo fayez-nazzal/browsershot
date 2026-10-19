@@ -46,3 +46,15 @@ test("captures a component library story using Storybook HTTP discovery and ifra
   const bytes = readFileSync(result.outputPath);
   expect(bytes.subarray(0, PNG_SIGNATURE.length)).toEqual(PNG_SIGNATURE);
 }, 120000);
+
+test("captures a component library story as HTML", () => {
+  const dir = scratch();
+  expect(Bun.spawnSync(["bun", CLI, "library", "add", "ui", `file://${FIXTURES_DIR}`, "--plugin", "storybook"], { cwd: dir }).exitCode).toBe(0);
+
+  const proc = Bun.spawnSync(["bun", CLI, "library", "ui", "components-button--primary", "--html", "--json"], { cwd: dir });
+  expect(proc.exitCode).toBe(0);
+  const result = JSON.parse(proc.stdout.toString());
+  expect(result.outputPath).toEndWith(".html");
+  expect(result.captured.kind).toBe("library");
+  expect(result.html.startsWith("<!doctype html>")).toBe(true);
+}, 120000);

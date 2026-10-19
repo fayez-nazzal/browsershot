@@ -37,6 +37,12 @@ Use flags when a capture needs more than a simple route:
   disables a saved element selector for one capture. It cannot be combined
   with `--full-page`.
 - `--expect-element` waits for a visible CSS element before actions.
+- `--html` returns self-contained, minimal HTML (the element or page body plus
+  the `<html>`/`<body>` shell and only the CSS that applies, media queries
+  resolved at the capture size and theme) instead of a PNG; `--format`
+  pretty-prints it. The `--json` result carries it in `html`. It cannot be
+  combined with `--box`, `--marker`, `--inspect-note`, `--publish`, or
+  `--full-page`.
 - `--no-auth`, `--no-expect`, `--no-json`, `--no-with-errors`, and
   `--no-auto-open` disable saved settings for one capture.
 - `--json` prints one machine-readable result object and no successful-run

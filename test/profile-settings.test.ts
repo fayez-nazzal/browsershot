@@ -11,7 +11,7 @@ import {
 test("the registry contains every persistent setting exactly once", () => {
   expect(PROFILE_SETTING_NAMES).toEqual([
     "baseUrl", "authUser", "authRedirect", "expectElement", "expectText", "element",
-    "output", "group", "label", "json", "autoOpen", "withErrors",
+    "output", "group", "label", "json", "autoOpen", "html", "format", "withErrors",
     "withResources", "withApi", "withWebsockets", "delay", "size", "theme", "publish",
   ]);
   expect(Object.keys(PROFILE_SETTINGS)).toEqual([...PROFILE_SETTING_NAMES]);
@@ -41,6 +41,8 @@ test("command values use descriptor kinds and validators", () => {
     name: "baseUrl", value: "https://example.com/app",
   });
   expect(() => profileValueFromCommand("json", "true")).toThrow("does not take a value");
+  expect(profileValueFromCommand("html", undefined)).toEqual({ name: "html", value: true });
+  expect(() => profileValueFromCommand("html", "true")).toThrow("does not take a value");
   expect(() => profileValueFromCommand("baseUrl", "not a url")).toThrow("absolute URL");
   expect(profileValueFromCommand("size", "360x520")).toEqual({ name: "size", value: "360x520" });
   expect(() => profileValueFromCommand("size", "wide")).toThrow("must look like WxH");

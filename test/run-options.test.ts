@@ -298,3 +298,50 @@ test("saved theme never sets the colour scheme on library targets", () => {
   const result = resolveRunOptions({ positional: undefined, flags: {}, profile: { theme: "dark" }, paths, cwd: "/repo", now, target });
   expect(result.capture.colorScheme).toBeUndefined();
 });
+
+test("--html switches the artifact and output suffix; --no-html restores PNG", () => {
+  const result = resolve("https://example.com/pricing", { html: true });
+  expect(result.capture.artifact).toBe("html");
+  expect(result.outputPath).toBe("/repo/.browsershot/captures/example.com/pricing_2026-09-05_14-30-12.html");
+  expect(result.format).toBe(false);
+  const saved = resolve("https://example.com/pricing", { "no-html": true }, { html: true });
+  expect(saved.capture.artifact).toBe("png");
+  expect(saved.outputPath).toEndWith(".png");
+  expect(resolve("https://example.com", {}, { html: true }).capture.artifact).toBe("html");
+});
+
+test("--format needs html; saved format applies only alongside html", () => {
+  expect(() => resolve("https://example.com", { format: true })).toThrow("--format needs --html");
+  expect(resolve("https://example.com", { format: true }, { html: true }).format).toBe(true);
+  expect(resolve("https://example.com", { html: true }, { format: true }).format).toBe(true);
+  expect(resolve("https://example.com", { html: true, "no-format": true }, { format: true }).format).toBe(false);
+  expect(resolve("https://example.com", {}, { format: true }).format).toBe(true);
+  expect(resolve("https://example.com", {}, { format: true }).capture.artifact).toBe("png");
+});
+
+test("--html rejects image-drawing flags and contradicting toggles", () => {
+  const rejected: CaptureFlags[] = [
+    { html: true, "full-page": true },
+    { html: true, box: ["1,2,3,4"] },
+    { html: true, marker: ["1,2"] },
+    { html: true, "inspect-note": "x" },
+    { html: true, publish: "" },
+  ];
+  for (const flags of rejected) expect(() => resolve("https://example.com", flags)).toThrow("cannot be combined with --html");
+  expect(() => resolve("https://example.com", { html: true, "no-html": true })).toThrow("conflict between --no-html and --html");
+  expect(() => resolve("https://example.com", { html: true, format: true, "no-format": true })).toThrow("conflict between --no-format and --format");
+  expect(resolve("https://example.com", { "no-html": true, "full-page": true }).capture.fullPage).toBe(true);
+});
+
+test("page and library identities name HTML captures with the html suffix", () => {
+  const page = resolveRunOptions({
+    positional: undefined, flags: { html: true }, profile: {}, paths, cwd: "/repo", now,
+    target: { url: "https://example.com/checkout", identity: { kind: "page", page: "checkout", element: "summary", setup: null } },
+  });
+  expect(page.outputPath).toBe("/repo/.browsershot/captures/checkout/summary_2026-09-05_14-30-12.html");
+  const library = resolveRunOptions({
+    positional: undefined, flags: { html: true }, profile: {}, paths, cwd: "/repo", now,
+    target: { url: "https://storybook.example.test/iframe.html?id=button", identity: { kind: "library", library: "ui", entry: "button" } },
+  });
+  expect(library.outputPath).toBe("/repo/.browsershot/captures/ui/button_2026-09-05_14-30-12.html");
+});

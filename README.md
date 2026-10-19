@@ -56,6 +56,17 @@ Settings live in `.browsershot/config.json` in this directory. A complete URL us
 
 A grouped capture has an illustrative shape such as `.browsershot/captures/PR-123/localhost-3000/pricing_desktop_<timestamp>.png` (the timestamp is omitted here). Host and other path values are made safe, so `localhost:3000` becomes `localhost-3000`.
 
+## Capture HTML
+
+`--html` returns a self-contained, minimal HTML document instead of a PNG: the `--element` markup (or the page body), the `<html>`/`<body>` shell such as theme classes, and only the CSS rules that apply. Media queries are resolved at the capture size and `--theme` colour scheme; scripts, unused rules, and unreferenced fonts and keyframes are dropped; relative CSS URLs become absolute; cross-origin stylesheets are kept as `<link>` tags. `--format` pretty-prints the result.
+
+```sh
+browsershot /pricing --element '#plan-card' --html --format
+browsershot page checkout summary --html --json
+```
+
+The file is written as `<name>.html` through the same output, sidecar, and SHA-256 pipeline as a PNG. Without `--json` stdout is the HTML and the path goes to stderr; with `--json` the object carries the document in `html`. `--html` cannot be combined with `--box`, `--marker`, `--inspect-note`, `--publish`, or `--full-page`; `--inspect` still records the element JSON without drawing the overlay. Sibling-dependent selectors (`+`, `~`, `:nth-child`) and canvas or video pixels are not preserved for element captures. Save defaults with `config set html` and `config set format`.
+
 ## Capture UI state
 
 Use readiness checks before interaction and inspection after it:
@@ -121,9 +132,9 @@ browsershot config unset expectElement
 browsershot config path
 ```
 
-Canonical settings are `baseUrl`, `authUser`, `authRedirect`, `expectElement`, `expectText`, `element`, `output`, `group`, `label`, `json`, `autoOpen`, `withErrors`, `delay`, `size`, and `publish`. Accepted aliases are `base-url`, `url`, `auth-user`, `auth-redirect`, `expect-element`, `expect-text`, `auto-open`, and `with-errors`. Legacy JSON `url` is read as `baseUrl`; reads do not rewrite or create the workspace, and explicit writes use canonical names. `browsershot config set withErrors` enables error collection for captures by default. Saved delay applies when `--delay` is omitted; an explicit `--delay` wins. Saved size applies when no page, setup, or `--size` supplies a viewport; a page or setup size beats the saved project size, and `--size` beats both.
+Canonical settings are `baseUrl`, `authUser`, `authRedirect`, `expectElement`, `expectText`, `element`, `output`, `group`, `label`, `json`, `autoOpen`, `html`, `format`, `withErrors`, `delay`, `size`, and `publish`. Accepted aliases are `base-url`, `url`, `auth-user`, `auth-redirect`, `expect-element`, `expect-text`, `auto-open`, and `with-errors`. Legacy JSON `url` is read as `baseUrl`; reads do not rewrite or create the workspace, and explicit writes use canonical names. `browsershot config set withErrors` enables error collection for captures by default. Saved delay applies when `--delay` is omitted; an explicit `--delay` wins. Saved size applies when no page, setup, or `--size` supplies a viewport; a page or setup size beats the saved project size, and `--size` beats both.
 
-Flags override saved defaults. Per-run disabling flags include `--no-auth`, `--no-auth-redirect`, `--no-expect`, `--no-element`, `--no-json`, `--no-with-errors`, and `--no-auto-open`. Positive and negative flags for the same setting conflict. Explicit `--expect-text` or `--expect-element` replaces the entire saved expectation set; both explicit checks must pass when both are supplied. `--no-expect` disables content assertions, not HTTP or blank-page guards.
+Flags override saved defaults. Per-run disabling flags include `--no-auth`, `--no-auth-redirect`, `--no-expect`, `--no-element`, `--no-json`, `--no-html`, `--no-format`, `--no-with-errors`, and `--no-auto-open`. Positive and negative flags for the same setting conflict. Explicit `--expect-text` or `--expect-element` replaces the entire saved expectation set; both explicit checks must pass when both are supplied. `--no-expect` disables content assertions, not HTTP or blank-page guards.
 
 Routes beginning with `/` append to the saved base path, including hash routes. Invalid saved configuration blocks full URLs as well as short routes.
 
@@ -275,12 +286,13 @@ Successful `--json` output has these fields:
 | `consoleErrorsJsonPath` | Console-error sidecar path, or `null` |
 | `consoleErrors` | Collected console and page errors when enabled, or `null` |
 | `inspected` | Inspection result, or `null` |
+| `html` | The captured HTML document for `--html` runs, or `null` for PNG captures |
 | `publishedUrl` | Public URL, or `null` |
 | `captured` | What the run captured: `{"kind": "url"}` for an ad-hoc capture, or the saved page or library entry identity |
 
 With `--json`, exactly one object is emitted on stdout and successful captures emit no human diagnostics on stderr; when error collection is enabled, `consoleErrors` is included inline. Without JSON, human diagnostics use stderr, formatted collected errors are printed there, and the absolute PNG path remains first on stdout. Successful publishing additionally prints a Markdown embed. JSON success is emitted only after requested sidecar and publishing work succeeds.
 
-Exit codes: `0` success; `1` capture or page-guard failure; `2` usage, conflicting flags, or invalid config; `3` Authstate or credentials environment failure; `4` PNG written but sidecar failed; `5` PNG written but publishing failed. In the last two cases the PNG remains and there is no successful JSON result.
+Exit codes: `0` success; `1` capture or page-guard failure; `2` usage, conflicting flags, or invalid config; `3` Authstate or credentials environment failure; `4` capture written but sidecar failed; `5` PNG written but publishing failed. In the last two cases the capture file remains and there is no successful JSON result.
 
 </details>
 

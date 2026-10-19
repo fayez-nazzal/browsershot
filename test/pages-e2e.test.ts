@@ -61,3 +61,16 @@ test(
   },
   120000,
 );
+
+test("captures a saved page element as HTML", () => {
+  const cwd = scratch();
+  expect(Bun.spawnSync(["bun", CLI, "page", "add", "sample", `file://${FIXTURE_PATH}`], { cwd }).exitCode).toBe(0);
+  expect(Bun.spawnSync(["bun", CLI, "page", "element", "sample", "summary", "#order-summary"], { cwd }).exitCode).toBe(0);
+
+  const proc = Bun.spawnSync(["bun", CLI, "page", "sample", "summary", "--html", "--json"], { cwd });
+  expect(proc.exitCode).toBe(0);
+  const result = JSON.parse(proc.stdout.toString());
+  expect(result.outputPath).toMatch(/\/captures\/sample\/summary_[0-9_-]+\.html$/);
+  expect(result.html).toContain("<h2>Order Summary</h2>");
+  expect(result.html).not.toContain("<h1>Saved Page Sample</h1>");
+}, 120000);

@@ -116,6 +116,13 @@ CAPTURE
       --no-with-websockets  Disable a saved withWebsockets setting
       --json                Print one JSON result instead of a path
       --no-json             Disable a saved json setting for this run
+      --html                Capture self-contained HTML instead of a PNG: the
+                            element (or page body) plus the html/body shell and
+                            only the CSS rules that apply, with media queries
+                            resolved at the capture size and theme
+      --no-html             Disable a saved html setting for this run
+      --format              Pretty-print the HTML (needs --html)
+      --no-format           Disable a saved format setting for this run
   Defaults are the load event, a 30-second navigation timeout, and a 1440x900
   viewport at 2x device scale. Each capture uses one browser launch and one
   screenshot.
@@ -184,25 +191,29 @@ PUBLISHING RULES
   setting and fails with usage error 2 if none is saved.
 
 OUTPUT AND ERRORS
-  Without --json, the absolute PNG path is the first stdout line. With --json,
+  Without --json, the absolute PNG path is the first stdout line. With --html the
+  file is <name>.html and stdout is the HTML itself (path on stderr). With --json,
   stdout is exactly one object with outputPath, bytes, sha256, inspectJsonPath,
-  consoleErrorsJsonPath, consoleErrors, inspected and publishedUrl. --with-errors
-  writes <png basename>.console.json beside the PNG; the errors are also inline
-  in the JSON result. Without --json, formatted errors and human diagnostics are
-  printed on stderr. Successful --json captures emit no human diagnostics.
+  consoleErrorsJsonPath, consoleErrors, inspected, html (null for PNG captures)
+  and publishedUrl. --with-errors writes <png basename>.console.json beside the
+  capture; the errors are also inline in the JSON result. Without --json,
+  formatted errors and human diagnostics are printed on stderr. Successful --json
+  captures emit no human diagnostics.
+  --html cannot be combined with --box, --marker, --inspect-note, --publish,
+  --full-page.
 
   Exit 0  capture written
   Exit 1  page guard or capture failure
   Exit 2  invalid command, option, conflicting flags or invalid saved configuration
   Exit 3  authstate or credentials environment failure
-  Exit 4  PNG written but a sidecar failed
+  Exit 4  capture written but a sidecar failed
   Exit 5  PNG written but publishing failed
 
 CONFIGURATION
   Canonical saved names: baseUrl, authUser, authRedirect, expectElement,
-  expectText, element, output, group, label, json, autoOpen, withErrors, delay,
-  size, theme and publish. Use "config set withErrors" to enable error collection by
-  default.
+  expectText, element, output, group, label, json, autoOpen, html, format,
+  withErrors, delay, size, theme and publish. Use "config set withErrors" to enable
+  error collection by default.
   theme is the default for --theme: light or dark applies to URL and page captures,
   and any name applies to library entries whose plugin declares a theme.
   Kebab-case aliases are accepted for set and unset, including base-url,
@@ -300,6 +311,10 @@ export function parseCliArgs(argv: string[]) {
       box: { type: "string", multiple: true, default: [] },
       marker: { type: "string", multiple: true, default: [] },
       json: { type: "boolean", default: false },
+      html: { type: "boolean", default: false },
+      "no-html": { type: "boolean", default: false },
+      format: { type: "boolean", default: false },
+      "no-format": { type: "boolean", default: false },
       publish: { type: "string" },
       "publish-size": { type: "string" },
       "publish-label": { type: "string" },
@@ -631,6 +646,8 @@ function captureFlagPresent(values: CaptureFlags): boolean {
     || values["no-auth"] === true || values["no-auth-redirect"] === true || values["no-json"] === true
     || values["no-with-errors"] === true
     || values["no-auto-open"] === true
+    || values.html === true || values.format === true
+    || values["no-html"] === true || values["no-format"] === true
   );
   const repeats = (values.box?.length ?? 0) > 0 || (values.marker?.length ?? 0) > 0;
   return text || toggles || repeats;

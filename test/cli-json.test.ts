@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -112,3 +113,38 @@ test("invalid saved naming fails for complete URLs instead of being ignored", ()
   expect(result.exitCode).toBe(2);
   expect(result.stderr.toString()).toContain("unknown output placeholder");
 });
+
+test("--html writes an HTML file and reports it in the single JSON object", () => {
+  const dir = scratch();
+  const html = writeSamplePage(dir);
+  const out = join(dir, "out.html");
+
+  const proc = Bun.spawnSync(["bun", CLI, `file://${html}`, "--size", "640x480", "--html", "--json", "--output", out], { cwd: dir });
+
+  expect(proc.exitCode).toBe(0);
+  const stdout = proc.stdout.toString();
+  expect(stdout.trimEnd().split("\n").length).toBe(1);
+  const parsed = JSON.parse(stdout);
+  expect(parsed.html.startsWith("<!doctype html>")).toBe(true);
+  expect(parsed.html).toContain("<h1>JSON Mode Sample</h1>");
+  expect(readFileSync(out, "utf8")).toBe(parsed.html);
+  expect(parsed.sha256).toBe(createHash("sha256").update(parsed.html).digest("hex"));
+  expect(proc.stderr.toString()).toBe("");
+}, 120000);
+
+test("--html without --json prints the HTML and --no-html restores the PNG", () => {
+  const dir = scratch();
+  const html = writeSamplePage(dir);
+
+  const human = Bun.spawnSync(["bun", CLI, `file://${html}`, "--size", "640x480", "--html"], { cwd: dir });
+  expect(human.exitCode).toBe(0);
+  expect(human.stdout.toString().startsWith("<!doctype html>")).toBe(true);
+  expect(human.stderr.toString()).toContain(".html");
+
+  expect(Bun.spawnSync(["bun", CLI, "config", "set", "html"], { cwd: dir }).exitCode).toBe(0);
+  const png = Bun.spawnSync(["bun", CLI, `file://${html}`, "--size", "640x480", "--no-html", "--json"], { cwd: dir });
+  expect(png.exitCode).toBe(0);
+  const parsed = JSON.parse(png.stdout.toString());
+  expect(parsed.outputPath).toEndWith(".png");
+  expect(parsed.html).toBeNull();
+}, 120000);

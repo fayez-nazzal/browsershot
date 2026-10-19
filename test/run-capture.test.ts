@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { runCapture, captureWithAuthRetry, emptySuccess, sha256Hex, type RunCaptureDependencies } from "../src/run-capture.ts";
 import type { ResolvedRunOptions } from "../src/run-options.ts";
 import { AuthStateFailure } from "../src/authstate.ts";
-import { AuthenticationCaptureFailure } from "../src/capture.ts";
+import { AuthenticationCaptureFailure, type CaptureResult } from "../src/capture.ts";
 
 test("the runner executes one shared pipeline and always cleans run temp", async () => {
   const cwd = mkdtempSync(join(tmpdir(), "browsershot-runner-test-"));
@@ -20,11 +20,12 @@ test("the runner executes one shared pipeline and always cleans run temp", async
     auth: { requested: false },
     outputPath,
     annotations: { boxes: [], markers: [] },
+    format: false,
     publish: null,
     report: { json: true, autoOpen: false },
   };
   const deps: Partial<RunCaptureDependencies> = {
-    capture: async () => { calls.push("capture"); return { png: new Uint8Array([1, 2, 3]), inspected: null }; },
+    capture: async () => { calls.push("capture"); return { artifact: { kind: "png", png: new Uint8Array([1, 2, 3]) }, inspected: null }; },
     drawAnnotations: (png) => { calls.push("annotate"); return png; },
   };
 
@@ -62,6 +63,7 @@ function optionsFor(cwd: string, patch: Partial<ResolvedRunOptions> = {}): Resol
     auth: { requested: false },
     outputPath: join(cwd, "capture.png"),
     annotations: { boxes: [], markers: [] },
+    format: false,
     publish: null,
     report: { json: true, autoOpen: false },
     ...patch,
@@ -90,7 +92,7 @@ test("requested auth discovers credentials and supplies the initial jar", async 
     resolveAuthJar: async (request) => { calls.push(`auth:${request.credentialsPath}:${request.user}`); return "/tmp/jar.json"; },
     capture: async (captureOptions) => {
       calls.push(`capture:${captureOptions.cookiesPath}`);
-      return { png: new Uint8Array([1]), inspected: null };
+      return { artifact: { kind: "png", png: new Uint8Array([1]) }, inspected: null };
     },
   });
   expect(calls).toEqual([
@@ -129,7 +131,7 @@ test("sidecar failure is exit 4 and retains the PNG", async () => {
   });
   await expect(runCapture(options, io, {
     capture: async () => ({
-      png: new Uint8Array([1]),
+      artifact: { kind: "png", png: new Uint8Array([1]) },
       inspected: { role: "button", name: "Menu", attributes: {}, outerHTML: "<button>Menu</button>" } as never,
     }),
   })).rejects.toMatchObject({ code: 4 });
@@ -141,7 +143,7 @@ test("with-errors writes an empty console sidecar and reports its path", async (
   const sidecar = join(cwd, "capture.console.json");
   const options = optionsFor(cwd, { capture: { url: "https://example.test", fullPage: false, delayMs: 0, allowBlank: false, withErrors: true } });
   const summary = await runCapture(options, recorded.io, {
-    capture: async () => ({ png: new Uint8Array([1]), inspected: null, consoleErrors: [] }),
+    capture: async () => ({ artifact: { kind: "png", png: new Uint8Array([1]) }, inspected: null, consoleErrors: [] }),
   });
   expect(summary.consoleErrorsJsonPath).toBe(sidecar);
   expect(summary.consoleErrors).toEqual([]);
@@ -156,7 +158,7 @@ test("console sidecar failure retains the PNG and exits 4", async () => {
   mkdirSync(sidecarDirectory);
   const options = optionsFor(cwd, { capture: { url: "https://example.test", fullPage: false, delayMs: 0, allowBlank: false, withErrors: true } });
   await expect(runCapture(options, recordingIo().io, {
-    capture: async () => ({ png: new Uint8Array([1]), inspected: null, consoleErrors: [] }),
+    capture: async () => ({ artifact: { kind: "png", png: new Uint8Array([1]) }, inspected: null, consoleErrors: [] }),
   })).rejects.toMatchObject({ code: 4 });
   expect(existsSync(options.outputPath)).toBe(true);
 });
@@ -167,7 +169,7 @@ test("inspection and console sidecars cannot share a path", async () => {
     capture: { url: "https://example.test", fullPage: false, delayMs: 0, allowBlank: false, withErrors: true },
   });
   await expect(runCapture(options, recordingIo().io, {
-    capture: async () => ({ png: new Uint8Array([1]), inspected: { role: "button", name: "Menu", attributes: {}, outerHTML: "<button>Menu</button>" } as never, consoleErrors: [] }),
+    capture: async () => ({ artifact: { kind: "png", png: new Uint8Array([1]) }, inspected: { role: "button", name: "Menu", attributes: {}, outerHTML: "<button>Menu</button>" } as never, consoleErrors: [] }),
   })).rejects.toMatchObject({ code: 4 });
   expect(existsSync(options.outputPath)).toBe(false);
 });
@@ -179,7 +181,7 @@ test("publish failure is exit 5 and retains the PNG", async () => {
     publish: { destination: "missing:shots/", size: 1200 },
   });
   await expect(runCapture(options, io, {
-    capture: async () => ({ png: new Uint8Array([1]), inspected: null }),
+    capture: async () => ({ artifact: { kind: "png", png: new Uint8Array([1]) }, inspected: null }),
     publish: () => { throw new Error("upload failed"); },
   })).rejects.toMatchObject({ code: 5, message: expect.stringContaining("upload failed") });
   expect(existsSync(options.outputPath)).toBe(true);
@@ -194,7 +196,7 @@ test("human reporting writes path then publish markdown and opens last", async (
     report: { json: false, autoOpen: true },
   });
   await runCapture(options, recorded.io, {
-    capture: async () => ({ png: new Uint8Array([1]), inspected: null }),
+    capture: async () => ({ artifact: { kind: "png", png: new Uint8Array([1]) }, inspected: null }),
     publish: () => {
       calls.push("publish");
       return { markdown: "![Menu](https://image.test)", url: "https://image.test", fileId: "id" };
@@ -208,8 +210,8 @@ test("human reporting writes path then publish markdown and opens last", async (
   expect(calls).toEqual(["publish", `open:${options.outputPath}`]);
 });
 
-function captureResult() {
-  return { png: new Uint8Array([1, 2, 3]), inspected: null };
+function captureResult(): CaptureResult {
+  return { artifact: { kind: "png", png: new Uint8Array([1, 2, 3]) }, inspected: null };
 }
 
 test("human mode formats captured console errors on stderr", async () => {
@@ -221,7 +223,7 @@ test("human mode formats captured console errors on stderr", async () => {
   });
   await runCapture(options, recorded.io, {
     capture: async () => ({
-      png: new Uint8Array([1]),
+      artifact: { kind: "png", png: new Uint8Array([1]) },
       inspected: null,
       consoleErrors: [{ kind: "console", text: "bad thing", url: "https://example.test/app.js", line: 4, column: 2 }],
     }),
@@ -249,7 +251,7 @@ test("auth capture retries once with a verified jar after an auth failure", asyn
       },
     },
   );
-  expect(result.png).toEqual(new Uint8Array([1, 2, 3]));
+  expect(result.artifact).toEqual({ kind: "png", png: new Uint8Array([1, 2, 3]) });
   expect(calls).toEqual(["capture", "verify", "capture"]);
   expect(jars).toEqual(["/jars/old.json", "/jars/refreshed.json"]);
 });
@@ -300,9 +302,80 @@ test("emptySuccess carries every success key and a url identity", () => {
     "consoleErrorsJsonPath",
     "consoleErrors",
     "inspected",
+    "html",
     "publishedUrl",
     "captured",
   ]);
   expect(emptySuccess().captured).toEqual({ kind: "url" });
   expect(Object.values(emptySuccess()).every((value) => value === null || typeof value === "object")).toBe(true);
+});
+
+function htmlOptions(cwd: string, patch: Partial<ResolvedRunOptions> = {}): ResolvedRunOptions {
+  return optionsFor(cwd, {
+    capture: { url: "https://example.test", fullPage: false, delayMs: 0, allowBlank: false, artifact: "html" },
+    outputPath: join(cwd, "capture.html"),
+    ...patch,
+  });
+}
+
+const HTML = "<!doctype html>\n<html><body><p>hi</p></body></html>\n";
+
+test("html artifacts are written as bytes, reported in the JSON summary, and skip image steps", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "browsershot-runner-html-"));
+  const calls: string[] = [];
+  const { io, stdout, stderr } = recordingIo();
+  const options = htmlOptions(cwd);
+  const summary = await runCapture(options, io, {
+    capture: async () => ({ artifact: { kind: "html", html: HTML }, inspected: null }),
+    drawAnnotations: (png) => { calls.push("annotate"); return png; },
+    publish: () => { calls.push("publish"); throw new Error("unexpected"); },
+    formatHtml: async (html) => { calls.push("format"); return html; },
+  });
+  expect(calls).toEqual([]);
+  expect(readFileSync(options.outputPath, "utf8")).toBe(HTML);
+  expect(summary.html).toBe(HTML);
+  expect(summary.bytes).toBe(new TextEncoder().encode(HTML).length);
+  expect(summary.sha256).toBe(sha256Hex(new TextEncoder().encode(HTML)));
+  expect(JSON.parse(stdout.join(""))).toEqual(summary);
+  expect(stderr.join("")).toBe("");
+});
+
+test("format runs the formatter only when requested and writes its result", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "browsershot-runner-format-"));
+  const formatted = "<!doctype html>\n<p>formatted</p>\n";
+  const formatCalls: string[] = [];
+  const deps: Partial<RunCaptureDependencies> = {
+    capture: async () => ({ artifact: { kind: "html", html: HTML }, inspected: null }),
+    formatHtml: async (html) => { formatCalls.push(html); return formatted; },
+  };
+  const on = htmlOptions(cwd, { format: true });
+  const summary = await runCapture(on, recordingIo().io, deps);
+  expect(formatCalls).toEqual([HTML]);
+  expect(readFileSync(on.outputPath, "utf8")).toBe(formatted);
+  expect(summary.html).toBe(formatted);
+  formatCalls.length = 0;
+  await runCapture(htmlOptions(cwd, { format: false }), recordingIo().io, deps);
+  expect(formatCalls).toEqual([]);
+});
+
+test("human mode prints exactly the HTML on stdout and the path on stderr", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "browsershot-runner-html-human-"));
+  const { io, stdout, stderr } = recordingIo();
+  const options = htmlOptions(cwd, { report: { json: false, autoOpen: false } });
+  await runCapture(options, io, { capture: async () => ({ artifact: { kind: "html", html: HTML }, inspected: null }) });
+  expect(stdout).toEqual([HTML]);
+  expect(stderr.join("")).toContain(`wrote ${options.outputPath}`);
+});
+
+test("inspection sidecars of an HTML capture drop the .html suffix", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "browsershot-runner-html-inspect-"));
+  const options = htmlOptions(cwd);
+  const summary = await runCapture(options, recordingIo().io, {
+    capture: async () => ({
+      artifact: { kind: "html", html: HTML },
+      inspected: { role: "button", name: "Menu", attributes: {}, outerHTML: "<button>Menu</button>" } as never,
+    }),
+  });
+  expect(summary.inspectJsonPath).toBe(join(cwd, "capture.json"));
+  expect(emptySuccess().html).toBeNull();
 });

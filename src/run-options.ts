@@ -6,10 +6,11 @@ import {
   NAVIGATION_TIMEOUT_MS,
   VIEWPORT_HEIGHT,
   VIEWPORT_WIDTH,
+  type CaptureArtifact,
   type CaptureOptions,
 } from "./capture.ts";
 import { toUsageError, UsageError } from "./exit-codes.ts";
-import { resolveOutputPath } from "./output-path.ts";
+import { resolveOutputPath, type OutputExtension } from "./output-path.ts";
 import type { ProfileConfig } from "./profile-settings.ts";
 import { resolveQuickUrl, type ProfilePaths } from "./profile.ts";
 import { DEFAULT_EMBED_WIDTH } from "./publish.ts";
@@ -23,7 +24,8 @@ export interface CaptureFlags {
   auth?: boolean; "auth-user"?: string; "auth-credentials"?: string; "auth-redirect"?: string; "auth-purpose"?: string;
   "no-auth"?: boolean; "no-auth-redirect"?: boolean; "expect-text"?: string; "expect-element"?: string; "no-expect"?: boolean;
   "allow-blank"?: boolean; "allow-status"?: boolean; act?: string; inspect?: string; "inspect-attr"?: string; "inspect-json"?: string; "inspect-note"?: string;
-  box?: string[]; marker?: string[]; json?: boolean; "no-json"?: boolean; "no-auto-open"?: boolean; "auto-open"?: boolean;
+  box?: string[]; marker?: string[]; json?: boolean; "no-json"?: boolean; html?: boolean; "no-html"?: boolean; format?: boolean; "no-format"?: boolean;
+  "no-auto-open"?: boolean; "auto-open"?: boolean;
   publish?: string; "publish-size"?: string; "publish-label"?: string; plugin?: string; ready?: string; scope?: string;
   theme?: string;
 }
@@ -39,6 +41,8 @@ export interface ResolvedRunOptions {
   outputPath: string;
   inspectJsonPath?: string;
   annotations: { boxes: BoxAnnotation[]; markers: MarkerAnnotation[] };
+  // Post-processing flag for HTML artifacts (pretty-print), sibling of annotations.
+  format: boolean;
   publish: { destination: string; size: number; label?: string } | null;
   report: { json: boolean; autoOpen: boolean };
 }
@@ -88,6 +92,12 @@ function validateConflicts(flags: Readonly<CaptureFlags>): void {
   if (flags["no-json"] === true && flags.json === true) {
     throw new UsageError("conflict between --no-json and --json");
   }
+  if (flags["no-html"] === true && flags.html === true) {
+    throw new UsageError("conflict between --no-html and --html");
+  }
+  if (flags["no-format"] === true && flags.format === true) {
+    throw new UsageError("conflict between --no-format and --format");
+  }
   if (flags["no-with-errors"] === true && flags["with-errors"] === true) {
     throw new UsageError("conflict between --no-with-errors and --with-errors");
   }
@@ -99,6 +109,19 @@ function validateConflicts(flags: Readonly<CaptureFlags>): void {
   }
   if (flags.output !== undefined && (flags.group !== undefined || flags.label !== undefined)) {
     throw new UsageError("--output cannot be combined with --group or --label");
+  }
+}
+
+function rejectHtmlConflicts(flags: Readonly<CaptureFlags>): void {
+  const present: Array<[string, boolean]> = [
+    ["full-page", flags["full-page"] === true],
+    ["box", (flags.box?.length ?? 0) > 0],
+    ["marker", (flags.marker?.length ?? 0) > 0],
+    ["inspect-note", flags["inspect-note"] !== undefined],
+    ["publish", flags.publish !== undefined],
+  ];
+  for (const [name, set] of present) {
+    if (set) throw new UsageError(`--${name} cannot be combined with --html; pass --no-html to capture a screenshot`);
   }
 }
 
@@ -194,6 +217,7 @@ function resolveRunOutput(
   cwd: string,
   url: string,
   identity: CaptureIdentity,
+  extension: OutputExtension,
   now?: Date,
 ): string {
   const explicitOutput = flags.output !== undefined;
@@ -209,6 +233,7 @@ function resolveRunOutput(
     group: explicitOutput ? undefined : flags.group ?? profile.group,
     label: explicitOutput ? undefined : flags.label ?? profile.label,
     identity,
+    extension,
     now,
   });
 }
@@ -290,6 +315,10 @@ export function resolveRunOptions(input: ResolveRunOptionsInput): ResolvedRunOpt
     validateConflicts(flags);
     validateRemovedFlags(flags);
     validateRequiredTextFlags(flags);
+    const html = flags["no-html"] === true ? false : flags.html === true || profile.html === true;
+    const format = flags["no-format"] === true ? false : flags.format === true || profile.format === true;
+    if (flags.format === true && !html) throw new UsageError("--format needs --html");
+    if (html) rejectHtmlConflicts(flags);
     const url = target?.url ?? resolveCaptureUrl(input.positional ?? "", profile);
     const identity = target?.identity ?? { kind: "url" };
     const expectations = resolveExpectations(flags, profile, target);
@@ -305,7 +334,7 @@ export function resolveRunOptions(input: ResolveRunOptionsInput): ResolvedRunOpt
       throw new UsageError("--element cannot be combined with --full-page; pass --no-element to capture the whole page");
     }
     const captured = effectiveCaptureIdentity(identity, flags);
-    const outputPath = resolveRunOutput(flags, profile, input.paths, input.cwd, url, captured, input.now);
+    const outputPath = resolveRunOutput(flags, profile, input.paths, input.cwd, url, captured, html ? "html" : "png", input.now);
     const targetActions = target?.actions ?? [];
     const flagActions = flags.act === undefined ? [] : parseActions(flags.act);
     const actions = targetActions.length === 0 && flagActions.length === 0 ? undefined : [...targetActions, ...flagActions];
@@ -324,6 +353,7 @@ export function resolveRunOptions(input: ResolveRunOptionsInput): ResolvedRunOpt
         url,
         viewport,
         element,
+        artifact: html ? "html" : "png",
         fullPage: flags["full-page"] === true,
         delayMs: flags.delay === undefined
           ? profile.delay ?? 0
@@ -348,6 +378,7 @@ export function resolveRunOptions(input: ResolveRunOptionsInput): ResolvedRunOpt
         boxes: (flags.box ?? []).map(parseBoxFlag),
         markers: (flags.marker ?? []).map(parseMarkerFlag),
       },
+      format,
       publish,
       report: {
         json: flags["no-json"] === true ? false : flags.json === true || profile.json === true,

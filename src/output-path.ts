@@ -20,6 +20,8 @@ interface ParsedUrlIdentity {
   queries: Array<{ source: "outer" | "hash"; params: URLSearchParams }>;
 }
 
+export type OutputExtension = "png" | "html";
+
 export interface ResolveOutputPathOptions {
   capturesDirectory: string;
   url: string;
@@ -28,6 +30,7 @@ export interface ResolveOutputPathOptions {
   label?: string;
   now?: Date;
   identity?: CaptureIdentity;
+  extension?: OutputExtension;
 }
 
 function twoDigits(value: number): string {
@@ -211,7 +214,7 @@ export function resolveOutputPath(options: ResolveOutputPathOptions): string {
   const directories = options.group == null ? [] : validateOutputGroup(options.group, values);
   const label = options.label == null ? "" : `_${validateOutputLabel(options.label, values)}`;
   const query = values.query === "" ? "" : `_q-${values.query}`;
-  const suffix = `${query}${label}_${values.timestamp}.png`;
+  const suffix = `${query}${label}_${values.timestamp}.${options.extension ?? "png"}`;
   const route = truncateUtf8(values.route, 255 - Buffer.byteLength(suffix, "utf8"));
   return join(options.capturesDirectory, ...directories, values.host, `${route}${suffix}`);
 }
@@ -226,7 +229,7 @@ function namedOutputPath(
   const folder = identity.kind === "page" ? identity.page : identity.library;
   const lead = identity.kind === "page" ? identity.element ?? "page" : identity.entry;
   const setup = identity.kind === "page" && identity.setup != null ? `_${safeSegment(identity.setup, "setup")}` : "";
-  const suffix = `${setup}${label}_${values.timestamp}.png`;
+  const suffix = `${setup}${label}_${values.timestamp}.${options.extension ?? "png"}`;
   const name = safeSegment(String(lead), "capture", 255 - Buffer.byteLength(suffix, "utf8"));
   return join(options.capturesDirectory, ...directories, safeSegment(folder, "capture"), `${name}${suffix}`);
 }

@@ -336,7 +336,7 @@ const INJECT_OVERLAY = (payload: OverlayPayload) => {
   document.body.appendChild(root);
 };
 
-export async function inspectElement(page: Page, options: InspectOptions, footer?: string): Promise<ElementRecord> {
+export async function readElementRecord(page: Page, options: InspectOptions): Promise<ElementRecord> {
   const locator = page.locator(options.selector).first();
   try {
     await locator.waitFor({ state: "attached", timeout: options.timeoutMs });
@@ -367,6 +367,11 @@ export async function inspectElement(page: Page, options: InspectOptions, footer
     displayHTML: truncate(shortenAttributeValues(raw.outerHTML), DISPLAY_HTML_LIMIT),
     box: raw.box,
   };
+  return record;
+}
+
+export async function inspectElement(page: Page, options: InspectOptions, footer?: string): Promise<ElementRecord> {
+  const record = await readElementRecord(page, options);
   await page.evaluate(INJECT_OVERLAY, overlayPayload(record, options.attr, footer));
   await page.waitForTimeout(120);
   return record;

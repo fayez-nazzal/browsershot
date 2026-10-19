@@ -1,12 +1,15 @@
 import { readFileSync } from "node:fs";
 import { chromium } from "playwright";
-import type { Browser, BrowserContext, LaunchOptions, Page } from "playwright";
+import type { Browser, BrowserContext, LaunchOptions, Locator, Page } from "playwright";
 import { runActions, type Action, type HoverElementHandle } from "./act.ts";
 import { renderHoverCursor } from "./hover-cursor.ts";
-import { inspectElement, type ElementRecord, type InspectOptions } from "./inspect.ts";
+import { snapshotHtml } from "./html-snapshot.ts";
+import { inspectElement, readElementRecord, type ElementRecord, type InspectOptions } from "./inspect.ts";
 import { assertLanding } from "./landing.ts";
 import { mergeStorageState, readOpenState, type StorageStateLike } from "./open-state.ts";
 import { createNetworkCollector, type NetworkAttempt, type NetworkCategory } from "./network-observability.ts";
+
+export type CaptureArtifact = "png" | "html";
 
 export interface CaptureOptions {
   url: string;
@@ -29,6 +32,7 @@ export interface CaptureOptions {
   verbose?: boolean;
   withErrors?: boolean;
   network?: readonly NetworkCategory[];
+  artifact?: CaptureArtifact;
 }
 
 export interface ConsoleErrorRecord {
@@ -42,8 +46,10 @@ export interface ConsoleErrorRecord {
   truncated?: boolean;
 }
 
+export type CapturedArtifact = { kind: "png"; png: Uint8Array } | { kind: "html"; html: string };
+
 export interface CaptureResult {
-  png: Uint8Array;
+  artifact: CapturedArtifact;
   inspected: ElementRecord | null;
   consoleErrors?: ConsoleErrorRecord[];
   network?: NetworkAttempt;
@@ -244,23 +250,31 @@ async function playActions(page: Page, o: CaptureOptions): Promise<HoverElementH
   }
   return null;
 }
+async function locateElement(page: Page, selector: string): Promise<Locator> {
+  try {
+    const element = page.locator(`css=${selector}:visible`).first();
+    await element.waitFor({ state: "visible", timeout: ELEMENT_READY_TIMEOUT_MS });
+    return element;
+  } catch (error) {
+    throw new Error(`--element ${JSON.stringify(selector)} failed: ${(error as Error).message}`);
+  }
+}
+
 async function captureScreenshot(page: Page, o: CaptureOptions): Promise<Uint8Array> {
   if (o.element === undefined) {
     return page.screenshot({ fullPage: o.fullPage });
   }
-  try {
-    const element = page.locator(`css=${o.element}:visible`).first();
-    await element.waitFor({ state: "visible", timeout: ELEMENT_READY_TIMEOUT_MS });
-    return element.screenshot();
-  } catch (error) {
-    throw new Error(`--element ${JSON.stringify(o.element)} failed: ${(error as Error).message}`);
-  }
+  return (await locateElement(page, o.element)).screenshot();
+}
+
+async function captureHtml(page: Page, o: CaptureOptions): Promise<string> {
+  return snapshotHtml(page, o.element === undefined ? null : await locateElement(page, o.element));
 }
 
 export async function capture(o: CaptureOptions, deps: CaptureDeps = defaultCaptureDeps): Promise<CaptureResult> {
   let network: NetworkAttempt | undefined;
   const session = await openSession(o, deps);
-  let png: Uint8Array;
+  let artifact: CapturedArtifact;
   let inspected: ElementRecord | null = null;
   const consoleErrors: ConsoleErrorRecord[] = [];
   try {
@@ -311,19 +325,23 @@ export async function capture(o: CaptureOptions, deps: CaptureDeps = defaultCapt
     await preparePage(page, o);
     const hoverTarget = await playActions(page, o);
     if (o.inspect != null) {
-      inspected = await inspectElement(page, o.inspect, o.inspectFooter);
+      inspected = o.artifact === "html"
+        ? await readElementRecord(page, o.inspect)
+        : await inspectElement(page, o.inspect, o.inspectFooter);
     }
-    if (hoverTarget != null) {
+    if (hoverTarget != null && o.artifact !== "html") {
       await renderHoverCursor(page, hoverTarget, o.fullPage);
     }
     o.log?.("capturing…");
     collector?.markCaptureInitiated();
-    png = await captureScreenshot(page, o);
+    artifact = o.artifact === "html"
+      ? { kind: "html", html: await captureHtml(page, o) }
+      : { kind: "png", png: await captureScreenshot(page, o) };
     network = collector?.finish();
   } finally {
     await closeSession(session);
   }
-  const result: CaptureResult = { png, inspected };
+  const result: CaptureResult = { artifact, inspected };
   if (o.withErrors === true) result.consoleErrors = consoleErrors;
   if (network != null) result.network = network;
   return result;

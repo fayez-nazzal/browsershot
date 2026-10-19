@@ -3,9 +3,10 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve as resolvePath } from "node:path";
 import { drawAnnotations } from "./annotate.ts";
 import type { CaptureIdentity } from "./capture-target.ts";
-import { capture, isAuthenticationCaptureFailure, type CaptureOptions, type CaptureResult, type ConsoleErrorRecord } from "./capture.ts";
+import { capture, isAuthenticationCaptureFailure, type CapturedArtifact, type CaptureOptions, type CaptureResult, type ConsoleErrorRecord } from "./capture.ts";
 import { ExitError, EXIT_FAILED, EXIT_WRITE_ERROR, publishFailure } from "./exit-codes.ts";
 import { AuthStateFailure, discoverAuthCredentials, resolveAuthJar } from "./authstate.ts";
+import { formatHtml } from "./format-html.ts";
 import type { ElementRecord } from "./inspect.ts";
 import { openFile } from "./open.ts";
 import { labelFromPath, publish, type PublishResult } from "./publish.ts";
@@ -23,6 +24,7 @@ export interface SuccessSummary {
   networkObservabilityJsonPath?: string;
   networkObservability?: unknown;
   inspected: unknown;
+  html: string | null;
   publishedUrl: string | null;
   captured: CaptureIdentity;
 }
@@ -37,6 +39,7 @@ export interface RunCaptureDependencies {
   resolveAuthJar: typeof resolveAuthJar;
   discoverAuthCredentials: typeof discoverAuthCredentials;
   drawAnnotations: typeof drawAnnotations;
+  formatHtml: typeof formatHtml;
   publish: typeof publish;
   openFile: typeof openFile;
 }
@@ -46,6 +49,7 @@ const DEFAULT_DEPENDENCIES: RunCaptureDependencies = {
   resolveAuthJar,
   discoverAuthCredentials,
   drawAnnotations,
+  formatHtml,
   publish,
   openFile,
 };
@@ -64,6 +68,7 @@ export function emptySuccess(): SuccessSummary {
     consoleErrorsJsonPath: null,
     consoleErrors: null,
     inspected: null,
+    html: null,
     publishedUrl: null,
     captured: { kind: "url" },
   };
@@ -73,10 +78,8 @@ export function sha256Hex(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-export function inspectJsonPath(pngPath: string): string {
-  let result = `${pngPath}.json`;
-  if (pngPath.toLowerCase().endsWith(".png")) result = `${pngPath.slice(0, -4)}.json`;
-  return result;
+export function inspectJsonPath(outputPath: string): string {
+  return `${outputPath.replace(/\.(png|html)$/i, "")}.json`;
 }
 export function consoleErrorsJsonPath(pngPath: string): string {
   const extension = pngPath.match(/\.([^.\\/]*)$/)?.[0];
@@ -137,6 +140,9 @@ function withDefaults(overrides: Partial<RunCaptureDependencies>): RunCaptureDep
   }
   if (overrides.drawAnnotations != null) {
     deps.drawAnnotations = overrides.drawAnnotations;
+  }
+  if (overrides.formatHtml != null) {
+    deps.formatHtml = overrides.formatHtml;
   }
   if (overrides.publish != null) {
     deps.publish = overrides.publish;
@@ -205,15 +211,28 @@ async function prepareAuthentication(options: ResolvedRunOptions, deps: RunCaptu
   return { jarPath, retryCredentials };
 }
 
+async function finishArtifact(
+  artifact: CapturedArtifact,
+  options: ResolvedRunOptions,
+  deps: RunCaptureDependencies,
+  runTmp: string,
+): Promise<CapturedArtifact> {
+  if (artifact.kind === "png") {
+    return { kind: "png", png: deps.drawAnnotations(artifact.png, options.annotations.boxes, options.annotations.markers, runTmp) };
+  }
+  return options.format ? { kind: "html", html: await deps.formatHtml(artifact.html) } : artifact;
+}
+
 function writeAndReport(
   options: ResolvedRunOptions,
   inspected: ElementRecord | null,
   consoleErrors: ConsoleErrorRecord[] | undefined,
   network: unknown,
-  png: Uint8Array,
+  artifact: CapturedArtifact,
   deps: RunCaptureDependencies,
   io: RunCaptureIO,
 ): SuccessSummary {
+  const bytes = artifact.kind === "png" ? artifact.png : new TextEncoder().encode(artifact.html);
   const quiet = options.report.json;
   const out = options.outputPath;
   if (options.inspectJsonPath != null) {
@@ -226,11 +245,12 @@ function writeAndReport(
     }
   }
   mkdirSync(dirname(out), { recursive: true });
-  writeFileSync(out, png);
+  writeFileSync(out, bytes);
   const success = emptySuccess();
   success.outputPath = out;
-  success.bytes = png.length;
-  success.sha256 = sha256Hex(png);
+  success.bytes = bytes.length;
+  success.sha256 = sha256Hex(bytes);
+  success.html = artifact.kind === "html" ? artifact.html : null;
   success.captured = options.captured;
   success.consoleErrors = options.capture.withErrors === true ? consoleErrors ?? [] : null;
   if (network != null) {
@@ -246,11 +266,11 @@ function writeAndReport(
     if (!quiet) io.stderr(`browsershot: network observability json ${sidecarPath}\n`);
   }
   if (!quiet) {
-    io.stderr(`browsershot: wrote ${out} (${png.length} bytes)\n`);
+    io.stderr(`browsershot: wrote ${out} (${bytes.length} bytes)\n`);
     io.stderr(`browsershot: sha256 ${success.sha256}\n`);
   }
   if (options.report.json === false) {
-    io.stdout(`${out}\n`);
+    io.stdout(artifact.kind === "html" ? artifact.html : `${out}\n`);
   }
   if (inspected != null) {
     let sidecarPath = inspectJsonPath(out);
@@ -337,8 +357,8 @@ export async function runCapture(options: ResolvedRunOptions, io: RunCaptureIO, 
       deps,
       reportStderr,
     );
-    const png = deps.drawAnnotations(captured.png, options.annotations.boxes, options.annotations.markers, runTmp);
-    return writeAndReport(options, captured.inspected, captured.consoleErrors, captured.network, png, deps, io);
+    const artifact = await finishArtifact(captured.artifact, options, deps, runTmp);
+    return writeAndReport(options, captured.inspected, captured.consoleErrors, captured.network, artifact, deps, io);
   } catch (error) {
     if (error instanceof ExitError) throw error;
     throw new ExitError((error as Error).message, EXIT_FAILED);

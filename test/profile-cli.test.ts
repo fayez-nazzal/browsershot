@@ -139,3 +139,17 @@ test("unknown saved settings block quick routes and complete URLs before workspa
     expect(existsSync(join(directory, "captures"))).toBe(false);
   }
 });
+
+test("config commands set and unset html and format", () => {
+  const root = scratch();
+  expect(run(root, "config", "set", "html").exitCode).toBe(0);
+  expect(run(root, "config", "set", "format").exitCode).toBe(0);
+  const shown = run(root, "config", "show").stdout.toString();
+  expect(shown).toContain('"html": true');
+  expect(shown).toContain('"format": true');
+  expect(run(root, "config", "unset", "html").exitCode).toBe(0);
+  expect(run(root, "config", "unset", "format").exitCode).toBe(0);
+  const cleared = run(root, "config", "show").stdout.toString();
+  expect(cleared).not.toContain('"html"');
+  expect(cleared).not.toContain('"format"');
+});
