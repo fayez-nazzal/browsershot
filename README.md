@@ -80,10 +80,11 @@ Run `browsershot --help` for the complete flag list and `browsershot --version` 
 <details>
 <summary>Saved defaults and one-run overrides</summary>
 
-`config set` saves project defaults; `config unset` removes a setting. Boolean settings are set without a value. Delay is saved as a positive integer in milliseconds:
+`config set` saves project defaults; `config unset` removes a setting. Boolean settings are set without a value. Delay is saved as a positive integer in milliseconds, and size is saved as `WxH` with positive integer dimensions:
 
 ```sh
 browsershot config set delay 3000
+browsershot config set size 390x844
 ```
 
 ```sh
@@ -94,7 +95,7 @@ browsershot config unset expectElement
 browsershot config path
 ```
 
-Canonical settings are `baseUrl`, `authUser`, `authRedirect`, `expectElement`, `expectText`, `element`, `output`, `group`, `label`, `json`, `autoOpen`, `withErrors`, `delay`, and `publish`. Accepted aliases are `base-url`, `url`, `auth-user`, `auth-redirect`, `expect-element`, `expect-text`, `auto-open`, and `with-errors`. Legacy JSON `url` is read as `baseUrl`; reads do not rewrite or create the workspace, and explicit writes use canonical names. `browsershot config set withErrors` enables error collection for captures by default. Saved delay applies when `--delay` is omitted; an explicit `--delay` wins.
+Canonical settings are `baseUrl`, `authUser`, `authRedirect`, `expectElement`, `expectText`, `element`, `output`, `group`, `label`, `json`, `autoOpen`, `withErrors`, `delay`, `size`, and `publish`. Accepted aliases are `base-url`, `url`, `auth-user`, `auth-redirect`, `expect-element`, `expect-text`, `auto-open`, and `with-errors`. Legacy JSON `url` is read as `baseUrl`; reads do not rewrite or create the workspace, and explicit writes use canonical names. `browsershot config set withErrors` enables error collection for captures by default. Saved delay applies when `--delay` is omitted; an explicit `--delay` wins. Saved size applies when no page, setup, or `--size` supplies a viewport; a page or setup size beats the saved project size, and `--size` beats both.
 
 Flags override saved defaults. Per-run disabling flags include `--no-auth`, `--no-auth-redirect`, `--no-expect`, `--no-element`, `--no-json`, `--no-with-errors`, and `--no-auto-open`. Positive and negative flags for the same setting conflict. Explicit `--expect-text` or `--expect-element` replaces the entire saved expectation set; both explicit checks must pass when both are supplied. `--no-expect` disables content assertions, not HTTP or blank-page guards.
 
@@ -215,7 +216,7 @@ Histoire has no built-in description, because its single-variant URL form is unc
 <details>
 <summary>Readiness, actions, inspection, and output</summary>
 
-The default viewport is `1440x900` at 2× scale. Navigation waits for the load event with a 30-second timeout; `--delay <ms>` adds settling time.
+The default viewport is `1440x900` at 2× scale; a saved `size` or `--size WxH` overrides it. Navigation waits for the load event with a 30-second timeout; `--delay <ms>` adds settling time.
 
 `--expect-element` waits up to 10 seconds for the first matching CSS element to be visible, not necessarily unobscured or in the viewport. `--expect-text` checks for a case-sensitive substring in body text. `--element` captures the first matching visible element.
 

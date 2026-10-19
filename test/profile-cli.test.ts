@@ -30,6 +30,17 @@ test("delay saves as milliseconds and rejects non-positive values", () => {
   expect(run(root, "config", "set", "delay", "9007199254740993").exitCode).toBe(2);
 });
 
+test("size saves as WxH and rejects malformed or non-positive dimensions", () => {
+  const root = scratch();
+  expect(run(root, "config", "set", "size", "360x520").exitCode).toBe(0);
+  expect(run(root, "config", "show").stdout.toString()).toContain('"size": "360x520"');
+  for (const value of ["wide", "360", "0x520", "360x0", "9007199254740992x520"]) {
+    expect(run(root, "config", "set", "size", value).exitCode).toBe(2);
+  }
+  expect(run(root, "config", "unset", "size").exitCode).toBe(0);
+  expect(run(root, "config", "show").stdout.toString()).not.toContain('"size"');
+});
+
 test("config commands set show path and unset saved values", () => {
   const root = scratch();
   expect(run(root, "config", "set", "url", "http://localhost:8990/app").exitCode).toBe(0);

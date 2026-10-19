@@ -1,5 +1,6 @@
 import { expandOutputTemplate, validateOutputGroup, validateOutputLabel, type OutputTemplateValues } from "./output-path.ts";
 import { UsageError } from "./exit-codes.ts";
+import { parseSize } from "./size.ts";
 
 export interface ProfileConfig {
   baseUrl?: string;
@@ -18,6 +19,7 @@ export interface ProfileConfig {
   withApi?: boolean;
   withWebsockets?: boolean;
   delay?: number;
+  size?: string;
   publish?: string;
 }
 
@@ -62,6 +64,14 @@ export const PROFILE_SETTINGS: { [Name in ProfileSettingName]-?: ProfileSettingD
   withApi: { kind: "boolean", aliases: ["with-api"] },
   withWebsockets: { kind: "boolean", aliases: ["with-websockets"] },
   delay: { kind: "positive-integer" },
+  size: {
+    kind: "string",
+    validate: (value) => {
+      if (parseSize(value) === null) {
+        throw new UsageError("profile setting size must look like WxH (e.g. 1920x1080)");
+      }
+    },
+  },
   publish: { kind: "string" },
 };
 

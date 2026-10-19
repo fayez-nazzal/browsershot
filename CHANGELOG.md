@@ -6,8 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- The `size` profile key. `browsershot config set size 360x520` saves a project
+  viewport; `--size` and saved page or setup sizes keep precedence.
+
 ### Fixed
 
+- Viewport dimensions must be positive safe integers, so `--size 0x0` is a
+  usage error rather than a browser failure.
 - Named authenticated captures now select Authstate entries with `--purpose`
   rather than the unsupported `--user` flag.
 - Documented human Google/SSO login followed by passwordless session reuse.

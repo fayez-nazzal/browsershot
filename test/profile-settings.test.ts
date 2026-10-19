@@ -12,7 +12,7 @@ test("the registry contains every persistent setting exactly once", () => {
   expect(PROFILE_SETTING_NAMES).toEqual([
     "baseUrl", "authUser", "authRedirect", "expectElement", "expectText", "element",
     "output", "group", "label", "json", "autoOpen", "withErrors",
-    "withResources", "withApi", "withWebsockets", "delay", "publish",
+    "withResources", "withApi", "withWebsockets", "delay", "size", "publish",
   ]);
   expect(Object.keys(PROFILE_SETTINGS)).toEqual([...PROFILE_SETTING_NAMES]);
   expect(PROFILE_SETTINGS.json.kind).toBe("boolean");
@@ -20,6 +20,7 @@ test("the registry contains every persistent setting exactly once", () => {
   expect(PROFILE_SETTINGS.withErrors.kind).toBe("boolean");
   expect(PROFILE_SETTINGS.baseUrl.kind).toBe("string");
   expect(PROFILE_SETTINGS.delay.kind).toBe("positive-integer");
+  expect(PROFILE_SETTINGS.size.kind).toBe("string");
 });
 
 test("canonical names and legacy aliases resolve through one registry", () => {
@@ -41,6 +42,9 @@ test("command values use descriptor kinds and validators", () => {
   });
   expect(() => profileValueFromCommand("json", "true")).toThrow("does not take a value");
   expect(() => profileValueFromCommand("baseUrl", "not a url")).toThrow("absolute URL");
+  expect(profileValueFromCommand("size", "360x520")).toEqual({ name: "size", value: "360x520" });
+  expect(() => profileValueFromCommand("size", "wide")).toThrow("must look like WxH");
+  expect(() => profileValueFromCommand("size", "0x520")).toThrow("must look like WxH");
   expect(() => profileValueFromCommand("unknown", "x")).toThrow(UsageError);
 });
 
@@ -51,6 +55,8 @@ test("raw validation normalizes legacy url and rejects invalid combinations", ()
   expect(validateProfileConfig({ url: "https://legacy.example", baseUrl: "https://canonical.example" }).baseUrl)
     .toBe("https://canonical.example");
   expect(() => validateProfileConfig({ output: "shot.png", label: "menu" })).toThrow("cannot be combined");
+  expect(validateProfileConfig({ size: "360x520" })).toEqual({ size: "360x520" });
+  expect(() => validateProfileConfig({ size: "wide" })).toThrow("must look like WxH");
   expect(() => validateProfileConfig({ json: "true" })).toThrow("must be boolean");
   expect(() => validateProfileConfig({ mystery: "x" })).toThrow(UsageError);
 });

@@ -13,6 +13,7 @@ import { resolveOutputPath } from "./output-path.ts";
 import type { ProfileConfig } from "./profile-settings.ts";
 import { resolveQuickUrl, type ProfilePaths } from "./profile.ts";
 import { DEFAULT_EMBED_WIDTH } from "./publish.ts";
+import { parseSize } from "./size.ts";
 
 export interface CaptureFlags {
   output?: string; group?: string; label?: string; size?: string;
@@ -251,12 +252,6 @@ export function normalizeUrl(url: string): string {
   return result;
 }
 
-export function parseSize(value: string): { width: number; height: number } | null {
-  const match = /^(\d+)x(\d+)$/i.exec(value.trim());
-  if (match === null) return null;
-  return { width: Number(match[1]), height: Number(match[2]) };
-}
-
 export function resolveCaptureUrl(
   positional: string,
   profile: Readonly<ProfileConfig>,
@@ -297,9 +292,11 @@ export function resolveRunOptions(input: ResolveRunOptionsInput): ResolvedRunOpt
     const expectations = resolveExpectations(flags, profile, target);
     const auth = resolveAuth(flags, profile, target);
     const publish = resolvePublish(flags, profile);
-    const viewport = flags.size === undefined
-      ? target?.viewport ?? { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT }
-      : requiredSize(flags.size);
+    const viewport = flags.size !== undefined
+      ? requiredSize(flags.size)
+      : target?.viewport ?? (profile.size === undefined
+        ? { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT }
+        : requiredSize(profile.size));
     const element = flags["no-element"] === true ? undefined : flags.element ?? target?.element ?? profile.element;
     if (element !== undefined && flags["full-page"] === true) {
       throw new UsageError("--element cannot be combined with --full-page; pass --no-element to capture the whole page");

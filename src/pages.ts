@@ -6,7 +6,8 @@ import type { CaptureTarget } from "./capture-target.ts";
 import { toUsageError, UsageError } from "./exit-codes.ts";
 import type { ProfileConfig } from "./profile-settings.ts";
 import { resolveQuickUrl } from "./profile.ts";
-import { normalizeUrl, parseSize } from "./run-options.ts";
+import { normalizeUrl } from "./run-options.ts";
+import { parseSize } from "./size.ts";
 
 export const RESERVED_PAGE_WORDS = ["add", "element", "setup", "list", "show", "remove"] as const;
 

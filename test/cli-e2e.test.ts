@@ -67,6 +67,33 @@ test("captures a sample HTML page and validates viewport and full page screensho
   expect(fullPageResult.sha256).not.toBe(viewportResult.sha256);
 });
 
+test("saved size configures the capture viewport", () => {
+  const dir = scratch();
+  const html = join(dir, "sample.html");
+  const output = join(dir, "mobile.png");
+  writeFileSync(
+    html,
+    `<!doctype html>
+<html>
+  <body style="margin: 0; font-family: sans-serif;">
+    <main style="width: 360px; min-height: 520px; padding: 16px; box-sizing: border-box;">
+      <h1>Saved Size Sample</h1>
+      <p>This fixture proves that the saved size configures the capture viewport.</p>
+    </main>
+  </body>
+</html>`,
+  );
+
+  expect(Bun.spawnSync(["bun", CLI, "config", "set", "size", "360x520"], { cwd: dir }).exitCode).toBe(0);
+  const capture = Bun.spawnSync(
+    ["bun", CLI, `file://${html}`, "--expect-text", "Saved Size Sample", "--output", output, "--json"],
+    { cwd: dir },
+  );
+
+  expect(capture.exitCode).toBe(0);
+  expect(pngSize(output)).toEqual({ width: 720, height: 1040 });
+});
+
 test("bare --publish without a saved destination exits 2 before capturing", () => {
   const dir = scratch();
   const html = join(dir, "sample.html");

@@ -2,12 +2,12 @@ import { expect, test } from "bun:test";
 import { UsageError } from "../src/exit-codes.ts";
 import {
   normalizeUrl,
-  parseSize,
   resolveCaptureUrl,
   resolvePublishDestination,
   resolveRunOptions,
   type CaptureFlags,
 } from "../src/run-options.ts";
+import { parseSize } from "../src/size.ts";
 
 const now = new Date(2026, 8, 5, 14, 30, 12);
 const paths = {
@@ -58,6 +58,25 @@ test("saved defaults and explicit replacements resolve once", () => {
   expect(result.outputPath).toBe("/repo/explicit.png");
   expect(result.publish).toEqual({ destination: "gdrive:explicit/", size: 1200, label: undefined });
   expect(result.report).toEqual({ json: true, autoOpen: true });
+});
+
+test("saved size applies to URL captures unless a flag or target overrides it", () => {
+  expect(resolve("https://example.com", {}, { size: "360x520" }).capture.viewport).toEqual({ width: 360, height: 520 });
+  expect(resolve("https://example.com", { size: "800x600" }, { size: "360x520" }).capture.viewport)
+    .toEqual({ width: 800, height: 600 });
+  expect(resolveRunOptions({
+    positional: "https://example.com",
+    flags: {},
+    profile: { size: "360x520" },
+    paths,
+    cwd: "/repo",
+    now,
+    target: {
+      url: "https://example.com",
+      viewport: { width: 1280, height: 800 },
+      identity: { kind: "page", page: "home" },
+    },
+  }).capture.viewport).toEqual({ width: 1280, height: 800 });
 });
 
 test("saved delay applies unless an explicit delay overrides it", () => {
@@ -220,6 +239,9 @@ test("parseSize parses WxH and rejects malformed input", () => {
   expect(parseSize("1920*1080")).toBeNull();
   expect(parseSize("axb")).toBeNull();
   expect(parseSize("")).toBeNull();
+  expect(parseSize("0x1080")).toBeNull();
+  expect(parseSize("1920x0")).toBeNull();
+  expect(parseSize("9007199254740992x1080")).toBeNull();
 });
 
 test("resolvePublishDestination handles explicit, saved, and disabled publishing", () => {
