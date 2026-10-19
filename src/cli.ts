@@ -95,6 +95,11 @@ CAPTURE
                             configurable with config set size)
       --delay <ms>          Extra wait after load before capture (default: 0;
                             configurable with config set delay)
+      --theme <name>        Render in a theme (default: none; configurable with
+                            config set theme). light or dark also sets
+                            prefers-color-scheme on URL and page captures.
+                            Library entries send any name through the plugin's
+                            theme parameter (built-in storybook: globals=theme:<name>).
       --element <selector>  Capture only the first matching visible element
       --no-element          Disable a saved element selector for this run
       --full-page           Capture the whole scrollable page
@@ -196,8 +201,10 @@ OUTPUT AND ERRORS
 CONFIGURATION
   Canonical saved names: baseUrl, authUser, authRedirect, expectElement,
   expectText, element, output, group, label, json, autoOpen, withErrors, delay,
-  size and publish. Use "config set withErrors" to enable error collection by
+  size, theme and publish. Use "config set withErrors" to enable error collection by
   default.
+  theme is the default for --theme: light or dark applies to URL and page captures,
+  and any name applies to library entries whose plugin declares a theme.
   Kebab-case aliases are accepted for set and unset, including base-url,
   url, auth-user, expect-element, expect-text, auto-open and with-errors.
   Reads never rewrite the config file and never create the workspace.
@@ -232,6 +239,7 @@ COMPONENT LIBRARIES
 
   Capture one example by name:
     browsershot library ui button--primary
+    browsershot library ui button--primary --theme dark
     browsershot library ui "controls/button" --label hover
 
   A library is a running component environment described by a plugin (built-in:
@@ -298,6 +306,7 @@ export function parseCliArgs(argv: string[]) {
       plugin: { type: "string" },
       ready: { type: "string" },
       scope: { type: "string" },
+      theme: { type: "string" },
       help: { type: "boolean", short: "h", default: false },
       version: { type: "boolean", short: "v", default: false },
       "auto-open": { type: "boolean", default: false },
@@ -613,6 +622,7 @@ function captureFlagPresent(values: CaptureFlags): boolean {
     || values["expect-element"] !== undefined || values["inspect-attr"] !== undefined
     || values["inspect-json"] !== undefined || values["inspect-note"] !== undefined
     || values["publish-size"] !== undefined || values["publish-label"] !== undefined
+    || values.theme !== undefined
   );
   const toggles = (
     values.auth === true || values.json === true || values.verbose === true || values["with-errors"] === true
@@ -747,8 +757,8 @@ async function runLibraryCaptureCommand(values: CaptureFlags, args: string[]): P
   }
   rejectSetupFlag(values);
   const cwd = process.cwd();
-  const target = await resolveLibraryTarget({ library: args[0]!, entry: args[1]!, root: cwd });
   const profile = readProfile(cwd);
+  const target = await resolveLibraryTarget({ library: args[0]!, entry: args[1]!, root: cwd, theme: values.theme, defaultTheme: profile.theme });
   const paths = profilePaths(cwd);
   const input = { target, flags: values, profile, paths, cwd };
   const resolved = resolveRunOptions(input);

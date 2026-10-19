@@ -1,6 +1,7 @@
 import { expandOutputTemplate, validateOutputGroup, validateOutputLabel, type OutputTemplateValues } from "./output-path.ts";
 import { UsageError } from "./exit-codes.ts";
 import { parseSize } from "./size.ts";
+import { parseThemeName } from "./theme.ts";
 
 export interface ProfileConfig {
   baseUrl?: string;
@@ -20,6 +21,7 @@ export interface ProfileConfig {
   withWebsockets?: boolean;
   delay?: number;
   size?: string;
+  theme?: string;
   publish?: string;
 }
 
@@ -72,6 +74,7 @@ export const PROFILE_SETTINGS: { [Name in ProfileSettingName]-?: ProfileSettingD
       }
     },
   },
+  theme: { kind: "string", validate: (value) => { parseThemeName(value); } },
   publish: { kind: "string" },
 };
 

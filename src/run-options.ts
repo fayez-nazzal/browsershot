@@ -14,6 +14,7 @@ import type { ProfileConfig } from "./profile-settings.ts";
 import { resolveQuickUrl, type ProfilePaths } from "./profile.ts";
 import { DEFAULT_EMBED_WIDTH } from "./publish.ts";
 import { parseSize } from "./size.ts";
+import { parseThemeName } from "./theme.ts";
 
 export interface CaptureFlags {
   output?: string; group?: string; label?: string; size?: string;
@@ -24,6 +25,7 @@ export interface CaptureFlags {
   "allow-blank"?: boolean; "allow-status"?: boolean; act?: string; inspect?: string; "inspect-attr"?: string; "inspect-json"?: string; "inspect-note"?: string;
   box?: string[]; marker?: string[]; json?: boolean; "no-json"?: boolean; "no-auto-open"?: boolean; "auto-open"?: boolean;
   publish?: string; "publish-size"?: string; "publish-label"?: string; plugin?: string; ready?: string; scope?: string;
+  theme?: string;
 }
 
 type CaptureRunOptions = Omit<CaptureOptions, "cookiesPath" | "openStatePath" | "log">;
@@ -308,6 +310,12 @@ export function resolveRunOptions(input: ResolveRunOptionsInput): ResolvedRunOpt
     const flagActions = flags.act === undefined ? [] : parseActions(flags.act);
     const actions = targetActions.length === 0 && flagActions.length === 0 ? undefined : [...targetActions, ...flagActions];
     const inspect = resolveInspect(flags);
+    const explicitTheme = flags.theme === undefined ? undefined : parseThemeName(flags.theme);
+    if (explicitTheme !== undefined && explicitTheme !== "light" && explicitTheme !== "dark" && identity.kind !== "library") {
+      throw new UsageError(`--theme ${explicitTheme} needs a library entry; URL captures accept light or dark`);
+    }
+    const pageTheme = explicitTheme ?? profile.theme;
+    const colorScheme = identity.kind !== "library" && (pageTheme === "light" || pageTheme === "dark") ? pageTheme : undefined;
 
     return {
       cwd: input.cwd,
@@ -321,6 +329,7 @@ export function resolveRunOptions(input: ResolveRunOptionsInput): ResolvedRunOpt
           ? profile.delay ?? 0
           : nonNegativeInteger("delay", flags.delay),
         allowBlank: flags["allow-blank"] === true,
+        colorScheme,
         allowStatus: flags["allow-status"] === true,
         authRedirect: resolveAuthRedirect(flags, profile, target),
         expectText: expectations.text,

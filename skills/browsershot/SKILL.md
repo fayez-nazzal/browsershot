@@ -85,4 +85,8 @@ entries instead of guessing them. For these runs `captured` is
 `{"kind": "library", "library": "ui", "entry": "button--primary"}`, and the PNG
 defaults to `.browsershot/captures/{library}/{entry}_{timestamp}.png`.
 
+Render a theme with `--theme <name>`. For a library the name goes into the plugin's `theme` template (built-in `storybook`: `globals=theme:<name>`), so use names the environment knows, such as `dark`. For a URL or page capture only `light` or `dark` are accepted; they set `prefers-color-scheme`, which does not switch apps that theme by a class on `<html>`.
+
+Save a default with `browsershot config set theme dark`; `--theme` overrides it for one run, and `config unset theme` removes it. A saved name applies where it can (library entries with a `theme` template; URL and page captures only for `light` or `dark`) and is ignored elsewhere. An explicit `--theme` that cannot apply is a usage error.
+
 See the repository [`README.md`](../../README.md) for uncommon flags and publishing details.

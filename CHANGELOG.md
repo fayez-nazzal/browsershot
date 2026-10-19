@@ -21,6 +21,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   snapshot, and the authstate jar wins over it.
   With a saved `authUser`, the authstate jar for that user is applied before the
   page loads, as captures do.
+- `--theme <name>` renders a theme. Library entries send the name through the plugin's `theme` template (built-in `storybook`: `globals=theme:<name>`). URL and page captures accept `light` or `dark`, which set `prefers-color-scheme`; other names are usage errors for them. A plugin without a `theme` template rejects `--theme` before the catalog is fetched.
+- `config set theme <name>` saves a default theme, `config unset theme` removes it, and `--theme` overrides it per run. The saved default is best effort: library entries use it when the plugin declares a `theme` template, and URL and page captures use it only for `light` or `dark`.
 
 ### Fixed
 

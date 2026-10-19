@@ -14,6 +14,7 @@ export interface CaptureOptions {
   fullPage: boolean;
   element?: string;
   delayMs: number;
+  colorScheme?: "light" | "dark";
   cookiesPath?: string;
   openStatePath?: string;
   authRedirect?: string;
@@ -146,6 +147,9 @@ async function openSession(o: CaptureOptions, deps: CaptureDeps, extra: Record<s
   const contextOptions: Record<string, unknown> = { viewport, deviceScaleFactor: DEVICE_SCALE_FACTOR, ...extra };
   if (storageState != null) {
     contextOptions.storageState = storageState;
+  }
+  if (o.colorScheme !== undefined) {
+    contextOptions.colorScheme = o.colorScheme;
   }
   const context = await browser.newContext(contextOptions);
   const session: Session = { context, browser };

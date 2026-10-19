@@ -12,7 +12,7 @@ test("the registry contains every persistent setting exactly once", () => {
   expect(PROFILE_SETTING_NAMES).toEqual([
     "baseUrl", "authUser", "authRedirect", "expectElement", "expectText", "element",
     "output", "group", "label", "json", "autoOpen", "withErrors",
-    "withResources", "withApi", "withWebsockets", "delay", "size", "publish",
+    "withResources", "withApi", "withWebsockets", "delay", "size", "theme", "publish",
   ]);
   expect(Object.keys(PROFILE_SETTINGS)).toEqual([...PROFILE_SETTING_NAMES]);
   expect(PROFILE_SETTINGS.json.kind).toBe("boolean");
@@ -45,6 +45,8 @@ test("command values use descriptor kinds and validators", () => {
   expect(profileValueFromCommand("size", "360x520")).toEqual({ name: "size", value: "360x520" });
   expect(() => profileValueFromCommand("size", "wide")).toThrow("must look like WxH");
   expect(() => profileValueFromCommand("size", "0x520")).toThrow("must look like WxH");
+  expect(profileValueFromCommand("theme", "dark")).toEqual({ name: "theme", value: "dark" });
+  expect(() => profileValueFromCommand("theme", "not a theme")).toThrow(UsageError);
   expect(() => profileValueFromCommand("unknown", "x")).toThrow(UsageError);
 });
 
@@ -57,6 +59,8 @@ test("raw validation normalizes legacy url and rejects invalid combinations", ()
   expect(() => validateProfileConfig({ output: "shot.png", label: "menu" })).toThrow("cannot be combined");
   expect(validateProfileConfig({ size: "360x520" })).toEqual({ size: "360x520" });
   expect(() => validateProfileConfig({ size: "wide" })).toThrow("must look like WxH");
+  expect(validateProfileConfig({ theme: "sepia" })).toEqual({ theme: "sepia" });
+  expect(() => validateProfileConfig({ theme: "not a theme" })).toThrow(UsageError);
   expect(() => validateProfileConfig({ json: "true" })).toThrow("must be boolean");
   expect(() => validateProfileConfig({ mystery: "x" })).toThrow(UsageError);
 });

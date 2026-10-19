@@ -299,3 +299,31 @@ test("resolvePluginAuthHeader returns configured values and fails with code 3 wh
   expect(exitError.code).toBe(EXIT_ENVIRONMENT);
   expect(exitError.message).toContain(missingVar);
 });
+
+test("expandPluginAddress appends the theme parameter and rejects plugins without a theme template", () => {
+  const entry: CatalogEntry = { id: "clipbolt-actionbutton--icon-and-label", group: "ClipBolt/ActionButton", label: "Icon and label" };
+  expect(expandPluginAddress(BUILTIN_PLUGIN_DESCRIPTIONS.storybook, entry, "http://localhost:6007", "dark")).toBe(
+    "http://localhost:6007/iframe.html?id=clipbolt-actionbutton--icon-and-label&viewMode=story&globals=theme:dark",
+  );
+
+  const noTheme: PluginDescription = { ...BUILTIN_PLUGIN_DESCRIPTIONS.storybook, name: "plain", theme: undefined };
+  expect(() => expandPluginAddress(noTheme, entry, "http://localhost:6007", "dark")).toThrow(UsageError);
+});
+
+test("parsePluginDescription accepts a theme query template and rejects templates that cannot carry the theme", () => {
+  const base = {
+    version: 1,
+    name: "custom-plugin",
+    discover: { http: { path: "/index.json" }, entries: "entries", id: "id" },
+    address: "/view?id={id}",
+  };
+  const entry: CatalogEntry = { id: "button" };
+  const parsed = parsePluginDescription({ ...base, theme: "mode={theme}" }, "test");
+  expect(expandPluginAddress(parsed, entry, "https://example.test", "night")).toBe(
+    "https://example.test/view?id=button&mode=night",
+  );
+
+  expect(() => parsePluginDescription({ ...base, theme: "mode=dark" }, "test")).toThrow(UsageError);
+  expect(() => parsePluginDescription({ ...base, theme: "?mode={theme}" }, "test")).toThrow(UsageError);
+  expect(() => parsePluginDescription({ ...base, theme: "mode={theme}{id}" }, "test")).toThrow(UsageError);
+});

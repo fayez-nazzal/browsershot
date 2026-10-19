@@ -523,3 +523,67 @@ test("writeCatalogCache and readCachedCatalog round trip and malformed cache rea
   writeFileSync(cacheFile, JSON.stringify({ fetchedAt: "now", entries: [{ missingId: true }] }));
   expect(readCachedCatalog(root, "ui")).toBeNull();
 });
+
+test("resolveLibraryTarget sends --theme through the plugin theme parameter and rejects plugins without one", async () => {
+  const root = scratch();
+  saveLibrary(root, "ui", { baseUrl: "https://storybook.example.test", plugin: "storybook" });
+  const target = await resolveLibraryTarget({
+    library: "ui",
+    entry: "components-button--primary",
+    root,
+    theme: "dark",
+    fetcher: async () => sampleCatalogDocument(),
+  });
+  expect(target.url).toBe(
+    "https://storybook.example.test/iframe.html?id=components-button--primary&viewMode=story&globals=theme:dark",
+  );
+
+  const pluginsDir = join(root, ".browsershot", "plugins");
+  mkdirSync(pluginsDir, { recursive: true });
+  const plain: PluginDescription = {
+    version: 1,
+    name: "plain",
+    discover: { http: { path: "/index.json" }, entries: "entries", id: "id" },
+    address: "/iframe.html?id={id}",
+  };
+  writeFileSync(join(pluginsDir, "plain.json"), JSON.stringify(plain));
+  saveLibrary(root, "plain-ui", { baseUrl: "https://plain.example.test", plugin: "plain" });
+  let fetched = false;
+  await expect(resolveLibraryTarget({
+    library: "plain-ui",
+    entry: "components-button--primary",
+    root,
+    theme: "dark",
+    fetcher: async () => {
+      fetched = true;
+      return sampleCatalogDocument();
+    },
+  })).rejects.toThrow(UsageError);
+  expect(fetched).toBe(false);
+});
+
+test("resolveLibraryTarget applies a saved theme only where the plugin declares one, and --theme wins", async () => {
+  const root = scratch();
+  saveLibrary(root, "ui", { baseUrl: "https://storybook.example.test", plugin: "storybook" });
+  const pluginsDir = join(root, ".browsershot", "plugins");
+  mkdirSync(pluginsDir, { recursive: true });
+  const plain: PluginDescription = {
+    version: 1,
+    name: "plain",
+    discover: { http: { path: "/index.json" }, entries: "entries", id: "id" },
+    address: "/iframe.html?id={id}",
+  };
+  writeFileSync(join(pluginsDir, "plain.json"), JSON.stringify(plain));
+  saveLibrary(root, "plain-ui", { baseUrl: "https://plain.example.test", plugin: "plain" });
+  const fetcher = async () => sampleCatalogDocument();
+  const entry = "components-button--primary";
+
+  const saved = await resolveLibraryTarget({ library: "ui", entry, root, defaultTheme: "dark", fetcher });
+  expect(saved.url).toBe("https://storybook.example.test/iframe.html?id=components-button--primary&viewMode=story&globals=theme:dark");
+
+  const explicit = await resolveLibraryTarget({ library: "ui", entry, root, theme: "light", defaultTheme: "dark", fetcher });
+  expect(explicit.url).toBe("https://storybook.example.test/iframe.html?id=components-button--primary&viewMode=story&globals=theme:light");
+
+  const plainTarget = await resolveLibraryTarget({ library: "plain-ui", entry, root, defaultTheme: "dark", fetcher });
+  expect(plainTarget.url).toBe("https://plain.example.test/iframe.html?id=components-button--primary");
+});

@@ -5,12 +5,14 @@ import {
   expandPluginAddress,
   mapCatalogEntries,
   readPluginDescription,
+  requirePluginTheme,
   resolvePluginAuthHeader,
   type CatalogEntry,
   type PluginDescription,
   type PluginFilesDiscovery,
 } from "./plugin-description.ts";
 import type { CaptureTarget } from "./capture-target.ts";
+import { parseThemeName } from "./theme.ts";
 import { EXIT_ENVIRONMENT, EXIT_FAILED, ExitError, UsageError } from "./exit-codes.ts";
 
 export const RESERVED_LIBRARY_WORDS = ["add", "list", "show", "refresh", "remove"] as const;
@@ -509,8 +511,15 @@ export async function resolveLibraryTarget(input: {
   entry: string;
   root: string;
   fetcher?: CatalogFetcher;
+  theme?: string;
+  defaultTheme?: string;
 }): Promise<CaptureTarget> {
   const { definition, description } = readResolvedLibrary(input.root, input.library);
+  if (input.theme !== undefined) {
+    parseThemeName(input.theme);
+    requirePluginTheme(description);
+  }
+  const theme = input.theme ?? (description.theme === undefined ? undefined : input.defaultTheme);
   const cached = readCachedCatalog(input.root, input.library);
   let matches: CatalogEntry[] = [];
   if (cached !== null) {
@@ -529,7 +538,7 @@ export async function resolveLibraryTarget(input: {
   }
   const match = matches[0];
   const target: CaptureTarget = {
-    url: expandPluginAddress(description, match, definition.baseUrl),
+    url: expandPluginAddress(description, match, definition.baseUrl, theme),
     identity: { kind: "library", library: input.library, entry: match.id },
   };
   const element = definition.scope ?? description.scope;

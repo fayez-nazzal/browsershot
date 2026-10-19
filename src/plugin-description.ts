@@ -38,6 +38,7 @@ export interface PluginDescription {
   address: string;
   ready?: string;
   scope?: string;
+  theme?: string;
   auth?: PluginAuth;
 }
 
@@ -60,6 +61,7 @@ export const BUILTIN_PLUGIN_DESCRIPTIONS: Record<string, PluginDescription> = {
       label: "name",
     },
     address: "/iframe.html?id={id}&viewMode=story",
+    theme: "globals=theme:{theme}",
     ready: "#storybook-root",
   },
   ladle: {
@@ -261,6 +263,14 @@ export function parsePluginDescription(input: unknown, source: string): PluginDe
     }
     scope = input.scope;
   }
+  let theme: string | undefined;
+  if (input.theme !== undefined) {
+    if (!isNonEmptyString(input.theme)) {
+      throw pluginError(source, "theme must be a non-empty string");
+    }
+    validateThemeTemplate(input.theme, source);
+    theme = input.theme;
+  }
   let auth: PluginAuth | undefined;
   if (input.auth !== undefined) {
     const rawAuth = input.auth;
@@ -303,6 +313,9 @@ export function parsePluginDescription(input: unknown, source: string): PluginDe
   }
   if (scope !== undefined) {
     description.scope = scope;
+  }
+  if (theme !== undefined) {
+    description.theme = theme;
   }
   if (auth !== undefined) {
     description.auth = auth;
@@ -479,10 +492,39 @@ function joinAddress(baseUrl: string, address: string): string {
   return result;
 }
 
+function validateThemeTemplate(template: string, source: string): void {
+  if (!template.includes("{theme}")) {
+    throw pluginError(source, "theme must contain the {theme} placeholder");
+  }
+  if (/[?#]/.test(template)) {
+    throw pluginError(source, "theme is a query parameter template and cannot contain ? or #");
+  }
+  if (/[{}]/.test(template.replaceAll("{theme}", ""))) {
+    throw pluginError(source, "theme supports only the {theme} placeholder");
+  }
+}
+
+export function requirePluginTheme(description: PluginDescription): string {
+  if (description.theme === undefined) {
+    throw new UsageError(`plugin "${description.name}" declares no theme; add "theme" to its plugin file, e.g. "globals=theme:{theme}"`);
+  }
+  return description.theme;
+}
+
+function withThemeParameter(description: PluginDescription, url: string, theme: string): string {
+  const pair = requirePluginTheme(description).replaceAll("{theme}", encodeURIComponent(theme));
+  const hash = url.indexOf("#");
+  const beforeHash = hash === -1 ? url : url.slice(0, hash);
+  const fragment = hash === -1 ? "" : url.slice(hash);
+  const separator = beforeHash.includes("?") ? "&" : "?";
+  return `${beforeHash}${separator}${pair}${fragment}`;
+}
+
 export function expandPluginAddress(
   description: PluginDescription,
   entry: CatalogEntry,
   baseUrl: string,
+  theme?: string,
 ): string {
   const template = description.address;
   validateAddressTemplate(template);
@@ -527,7 +569,10 @@ export function expandPluginAddress(
   if (!isAbsoluteUrl(expanded)) {
     result = joinAddress(baseUrl, expanded);
   }
-  return result;
+  if (theme === undefined) {
+    return result;
+  }
+  return withThemeParameter(description, result, theme);
 }
 
 export function resolvePluginAuthHeader(auth: PluginAuth): { header: string; value: string } {

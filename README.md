@@ -110,6 +110,7 @@ Run `browsershot --help` for the complete flag list and `browsershot --version` 
 ```sh
 browsershot config set delay 3000
 browsershot config set size 390x844
+browsershot config set theme dark
 ```
 
 ```sh
@@ -220,6 +221,8 @@ Built-in plugins are `storybook` and `ladle`. A file at `.browsershot/plugins/<n
 }
 ```
 
+An optional `theme` is a query-parameter template with one `{theme}` placeholder, such as `globals=theme:{theme}`. `--theme <name>` appends it to a library entry's address. The built-in `storybook` plugin already declares it. A plugin without `theme` rejects `--theme` as a usage error, and a template may not contain `?`, `#`, or any placeholder other than `{theme}`.
+
 A plugin is data; nothing in it is executed. `discover` states exactly one of `http` (a `path` joined to the library's base address, or a complete `url`) or `files` (a `glob` with an optional `root`). `entries` is a dotted path to the catalog's array or object map, `id`, `group`, and `label` are dotted paths inside one entry where `$key` means the map key, and `filter` keeps entries whose fields equal the listed values. `address` is a template over `{base}`, `{id}`, `{group}`, and `{label}`; an unknown placeholder is an error. `ready` is the selector that proves the example rendered. Optional `scope` narrows the shot when one address renders more than the wanted example, and optional `auth` names a header and an environment variable, such as `{"header": "Authorization", "valueFrom": "env:CATALOG_TOKEN"}`. Only `env:` references are accepted: the value is read when the catalog is fetched and is never written into the workspace.
 
 `--ready` and `--scope` on `add` replace the plugin's selectors for one library. Use the environment's own selectors in place of these:
@@ -244,6 +247,10 @@ Histoire has no built-in description, because its single-variant URL form is unc
 The default viewport is `1440x900` at 2× scale; a saved `size` or `--size WxH` overrides it. Navigation waits for the load event with a 30-second timeout; `--delay <ms>` adds settling time.
 
 `--expect-element` waits up to 10 seconds for the first matching CSS element to be visible, not necessarily unobscured or in the viewport. `--expect-text` checks for a case-sensitive substring in body text. `--element` captures the first matching visible element.
+
+`--theme <name>` renders one theme. For a library entry the name goes into the plugin's `theme` template, so the built-in `storybook` plugin sends `globals=theme:<name>`, and the environment decides which names exist. Storybook falls back to its default theme for a name it does not know, without an error: `--theme sepia` against the clipbolt uikit Storybook rendered the light theme. For a URL or page capture only `light` and `dark` are accepted. They set the browser's `prefers-color-scheme`, so an app that switches themes by a class on `<html>` does not follow them; use a library entry or a URL that selects the theme.
+
+`config set theme <name>` saves a default, so captures render that theme without `--theme`. `--theme` overrides it for one run, and `config unset theme` removes it. The saved default is best effort: a library entry uses it only when its plugin declares a `theme` template, and a URL or page capture uses it only when it is `light` or `dark`. A saved library-only name such as `sepia` therefore never breaks URL captures. An explicit `--theme` that cannot apply still fails.
 
 HTTP and blank-render guards catch common false captures. Override them with `--allow-status` and `--allow-blank` when intentional. HTTP 401/403 remain authentication failures even with `--allow-status`, because the authentication check runs first. A render guard is not proof that the intended UI is correct.
 

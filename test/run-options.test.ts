@@ -265,3 +265,36 @@ test("only --no-auth keeps captures from the open-window snapshot", () => {
   expect(resolve("https://example.com", {}, {}).auth).toEqual({ requested: false, openState: true });
   expect(resolve("https://example.com", { "no-auth": true }, { authUser: "member" }).auth).toEqual({ requested: false, openState: false });
 });
+
+test("--theme light or dark sets the browser colour scheme; other names need a library entry", () => {
+  expect(resolve("https://example.com", { theme: "dark" }).capture.colorScheme).toBe("dark");
+  expect(resolve("https://example.com").capture.colorScheme).toBeUndefined();
+  expect(() => resolve("https://example.com", { theme: "sepia" })).toThrow(UsageError);
+  expect(() => resolve("https://example.com", { theme: "not a theme" })).toThrow(UsageError);
+});
+
+test("--theme on a library target keeps the name in the URL and leaves the colour scheme alone", () => {
+  const target = {
+    url: "https://storybook.example.test/iframe.html?id=button&viewMode=story&globals=theme:sepia",
+    identity: { kind: "library" as const, library: "ui", entry: "button" },
+  };
+  const result = resolveRunOptions({ positional: undefined, flags: { theme: "sepia" }, profile: {}, paths, cwd: "/repo", now, target });
+  expect(result.capture.url).toBe("https://storybook.example.test/iframe.html?id=button&viewMode=story&globals=theme:sepia");
+  expect(result.capture.colorScheme).toBeUndefined();
+});
+
+test("saved theme sets the colour scheme for URL captures and --theme overrides it", () => {
+  expect(resolve("https://example.com", {}, { theme: "dark" }).capture.colorScheme).toBe("dark");
+  expect(resolve("https://example.com", { theme: "light" }, { theme: "dark" }).capture.colorScheme).toBe("light");
+  expect(resolve("https://example.com", {}, { theme: "sepia" }).capture.colorScheme).toBeUndefined();
+  expect(() => resolve("https://example.com", { theme: "sepia" }, { theme: "dark" })).toThrow(UsageError);
+});
+
+test("saved theme never sets the colour scheme on library targets", () => {
+  const target = {
+    url: "https://storybook.example.test/iframe.html?id=button&viewMode=story&globals=theme:dark",
+    identity: { kind: "library" as const, library: "ui", entry: "button" },
+  };
+  const result = resolveRunOptions({ positional: undefined, flags: {}, profile: { theme: "dark" }, paths, cwd: "/repo", now, target });
+  expect(result.capture.colorScheme).toBeUndefined();
+});
