@@ -20,7 +20,7 @@ interface ParsedUrlIdentity {
   queries: Array<{ source: "outer" | "hash"; params: URLSearchParams }>;
 }
 
-export type OutputExtension = "png" | "html";
+export type OutputExtension = "png" | "html" | "webm";
 
 export interface ResolveOutputPathOptions {
   capturesDirectory: string;

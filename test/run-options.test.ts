@@ -21,6 +21,7 @@ function resolve(positional: string, flags: CaptureFlags = {}, profile = {}) {
 }
 
 test("built-in defaults produce a complete execution model", () => {
+
   expect(resolve("https://example.com/pricing")).toMatchObject({
     cwd: "/repo",
     outputPath: "/repo/.browsershot/captures/example.com/pricing_2026-09-05_14-30-12.png",
@@ -39,6 +40,80 @@ test("built-in defaults produce a complete execution model", () => {
     report: { json: false, autoOpen: false },
     annotations: { boxes: [], markers: [] },
   });
+});
+test("platform identity is opt-in and validates the supported desktop platforms", () => {
+  expect(resolve("https://example.com").capture.platform).toBeUndefined();
+  for (const platform of ["macos", "windows", "linux"] as const) {
+    expect(resolve("https://example.com", { platform }).capture.platform).toBe(platform);
+  }
+  expect(() => resolve("https://example.com", { platform: "android" })).toThrow(
+    "--platform must be macos, windows, or linux",
+  );
+});
+
+test("duration selects video, follows saved precedence, and zero restores PNG", () => {
+  expect(resolve("https://example.com").capture.durationMs).toBe(0);
+  const saved = resolve("https://example.com", {}, { duration: 2500 });
+  expect(saved.capture.durationMs).toBe(2500);
+  expect(saved.capture.artifact).toBe("webm");
+  expect(saved.outputPath).toEndWith(".webm");
+  expect(resolve("https://example.com", { duration: "1200" }, { duration: 2500 }).capture.durationMs).toBe(1200);
+  expect(resolve("https://example.com", { duration: "0" }, { duration: 2500 }).capture.artifact).toBe("png");
+  for (const value of ["", "-1", "1.5", "Infinity", "9007199254740992"]) {
+    expect(() => resolve("https://example.com", { duration: value })).toThrow("non-negative integer");
+  }
+});
+test("scroll actions select video, preserve flag order, and resolve the speed setting", () => {
+  const result = resolve(
+    "https://example.com",
+    { act: ["scroll:down(2000px)", "scroll:up(2000px)"], "scroll-speed": "2400" },
+    { scrollSpeed: 1800 },
+  );
+  expect(result.capture.actions).toEqual([
+    { kind: "scroll", value: "down(2000px)" },
+    { kind: "scroll", value: "up(2000px)" },
+  ]);
+  expect(result.capture.artifact).toBe("webm");
+  expect(result.capture.durationMs).toBe(0);
+  expect(result.capture.scrollSpeed).toBe(2400);
+  expect(result.outputPath).toEndWith(".webm");
+  expect(resolve("https://example.com").capture.scrollSpeed).toBe(1000);
+  expect(() => resolve("https://example.com", { "scroll-speed": "0" })).toThrow("positive integer");
+});
+
+test("video rejects incompatible capture modes and requires a webm exact output suffix", () => {
+  for (const flags of [
+    { html: true }, { element: "#target" }, { "full-page": true }, { box: ["1,2,3,4"] },
+    { marker: ["1,2"] }, { "inspect-note": "note" }, { publish: "target" }, { format: true },
+  ] as CaptureFlags[]) {
+    expect(() => resolve("https://example.com", { ...flags, duration: "1" })).toThrow();
+  }
+  expect(() => resolve("https://example.com", { duration: "1" }, { html: true })).toThrow("--no-html");
+  expect(() => resolve("https://example.com", { html: true, duration: "1" })).toThrow("omit --html");
+  expect(() => resolve("https://example.com", { duration: "1" }, { element: "#saved" })).toThrow("--no-element");
+  expect(() => resolve("https://example.com", { element: "#explicit", duration: "1" })).toThrow("omit --element");
+  expect(resolve("https://example.com", { duration: "1", "no-html": true }, { html: true }).capture.artifact).toBe("webm");
+  expect(resolve("https://example.com", { duration: "1", "no-element": true }, { element: "#saved" }).capture.artifact).toBe("webm");
+  expect(() => resolve("https://example.com", { duration: "1", output: "/tmp/shot.png" })).toThrow(".webm");
+  expect(() => resolve("https://example.com", { duration: "1" }, { output: "/tmp/saved.png" })).toThrow(".webm");
+  expect(resolve("https://example.com", { duration: "1", output: "/tmp/shot.WEBM" }).outputPath).toBe("/tmp/shot.WEBM");
+  expect(() => resolveRunOptions({
+    positional: undefined, flags: { duration: "1" }, profile: {}, paths, cwd: "/repo", now,
+    target: { url: "https://example.com/page", identity: { kind: "page", page: "checkout", element: "summary", setup: null }, element: "#summary" },
+  })).toThrow("--no-element");
+
+  const pageVideo = resolveRunOptions({
+    positional: undefined, flags: { duration: "1" }, profile: {}, paths, cwd: "/repo", now,
+    target: { url: "https://example.com/page", identity: { kind: "page", page: "checkout", setup: null } },
+  });
+  expect(pageVideo.capture.artifact).toBe("webm");
+  expect(pageVideo.outputPath).toEndWith(".webm");
+  const libraryVideo = resolveRunOptions({
+    positional: undefined, flags: { duration: "1" }, profile: {}, paths, cwd: "/repo", now,
+    target: { url: "https://example.com/story", identity: { kind: "library", library: "ui", entry: "button" } },
+  });
+  expect(libraryVideo.capture.artifact).toBe("webm");
+  expect(libraryVideo.outputPath).toEndWith(".webm");
 });
 
 test("saved defaults and explicit replacements resolve once", () => {
@@ -259,6 +334,10 @@ test("resolveCaptureUrl keeps complete URLs independent of the saved base", () =
   expect(resolveCaptureUrl("https://other.example/pricing", profile)).toBe("https://other.example/pricing");
   expect(resolveCaptureUrl("/pricing", profile)).toBe("https://example.com/app/pricing");
   expect(() => resolveCaptureUrl("/pricing", {})).toThrow(/baseUrl/);
+  expect(resolveCaptureUrl("#/settings", { baseUrl: "http://localhost:1420/browser-preview.html" })).toBe(
+    "http://localhost:1420/browser-preview.html#/settings",
+  );
+  expect(() => resolveCaptureUrl("#/settings", {})).toThrow(/baseUrl/);
 });
 
 test("only --no-auth keeps captures from the open-window snapshot", () => {
@@ -312,6 +391,7 @@ test("--html switches the artifact and output suffix; --no-html restores PNG", (
 
 test("--format needs html; saved format applies only alongside html", () => {
   expect(() => resolve("https://example.com", { format: true })).toThrow("--format needs --html");
+  expect(() => resolve("https://example.com", { format: true, duration: "1" })).toThrow("video cannot be combined with --format");
   expect(resolve("https://example.com", { format: true }, { html: true }).format).toBe(true);
   expect(resolve("https://example.com", { html: true }, { format: true }).format).toBe(true);
   expect(resolve("https://example.com", { html: true, "no-format": true }, { format: true }).format).toBe(false);

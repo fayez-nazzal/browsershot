@@ -147,6 +147,18 @@ test("a saved route resolves like a quick path and needs a saved baseUrl", () =>
   expect(() => resolvePageTarget({ root, page: "checkout", profile: {} })).toThrow(/quick capture needs a saved baseUrl/);
 });
 
+test("saved hash routes resolve against the base URL", () => {
+  const root = scratch();
+  savePage(root, "settings", { route: "#/settings" });
+  expect(
+    resolvePageTarget({
+      root,
+      page: "settings",
+      profile: { baseUrl: "http://localhost:1420/browser-preview.html" },
+    }).url,
+  ).toBe("http://localhost:1420/browser-preview.html#/settings");
+});
+
 test("unknown page element and setup names list the known names", () => {
   const root = scratch();
   savePage(root, "dashboard", { route: "/dashboard" });

@@ -117,6 +117,7 @@ test("hover runs before inspection and screenshot capture, and actions preserve 
     `<!doctype html>
 <html>
   <body>
+    <p>This rendered browser fixture is ready for action chaining.</p>
     <button id="menu" style="width: 180px; height: 60px;">Closed</button>
     <script>
       const menu = document.querySelector("#menu");
@@ -146,11 +147,89 @@ test("hover runs before inspection and screenshot capture, and actions preserve 
   expect(inspected.attributes["data-clicked"]).toBe("true");
   expect(inspected.displayHTML).toContain("Hovered");
 });
+test("repeated --act flags execute serially after the expected page content is ready", () => {
+  const dir = scratch();
+  const html = join(dir, "chained-actions.html");
+  const inspectOutput = join(dir, "chained-actions.json");
+  const output = join(dir, "chained-actions.png");
+  writeFileSync(
+    html,
+    `<!doctype html>
+<html>
+  <body>
+    <p>Application shell is rendered and ready.</p>
+    <button id="first" hidden>First action</button>
+    <button id="second" hidden>Second action</button>
+    <script>
+      setTimeout(() => { document.querySelector("#first").hidden = false; }, 100);
+      document.querySelector("#first").addEventListener("click", () => {
+        document.querySelector("#second").hidden = false;
+        document.body.dataset.first = "complete";
+      });
+      document.querySelector("#second").addEventListener("click", () => {
+        document.body.dataset.sequence = document.body.dataset.first === "complete" ? "complete" : "out-of-order";
+      });
+    </script>
+  </body>
+</html>`,
+  );
+
+  const proc = Bun.spawnSync(
+    ["bun", CLI, `file://${html}`, "--allow-blank", "--expect-element", "#first", "--act", "click:#first", "--act", "click:#second", "--inspect", "body", "--inspect-json", inspectOutput, "--output", output, "--json"],
+    { cwd: dir },
+  );
+
+  if (proc.exitCode !== 0) throw new Error(proc.stderr.toString() || proc.stdout.toString());
+  const inspected = JSON.parse(readFileSync(inspectOutput, "utf8"));
+  expect(inspected.attributes["data-sequence"]).toBe("complete");
+  expect(existsSync(output)).toBe(true);
+});
+
+
+test("directional scroll reaches a nested scroll container under the viewport center", () => {
+  const dir = scratch();
+  const html = join(dir, "nested-scroll.html");
+  const output = join(dir, "nested-scroll.webm");
+  writeFileSync(
+    html,
+    `<!doctype html>
+<html>
+  <body style="margin:0;height:1200px">
+    <p style="position:fixed;top:0;left:0">Nested list is rendered and ready.</p>
+    <div id="list" style="position:absolute;left:20px;top:100px;width:320px;height:320px;overflow:auto">
+      <div style="height:1200px"></div>
+    </div>
+    <output id="state">waiting</output>
+    <script>
+      const list = document.querySelector("#list");
+      list.addEventListener("scroll", () => {
+        list.dataset.scrolled = "true";
+        list.dataset.outerScroll = String(window.scrollY);
+      });
+    </script>
+  </body>
+</html>`,
+  );
+
+  const inspectOutput = join(dir, "nested-scroll.json");
+  const proc = Bun.spawnSync(
+    ["bun", CLI, `file://${html}`, "--allow-blank", "--size", "360x520", "--scroll-speed", "2000", "--act", "scroll:down(200px)", "--inspect", "#list", "--inspect-json", inspectOutput, "--output", output, "--json"],
+    { cwd: dir },
+  );
+
+  if (proc.exitCode !== 0) throw new Error(proc.stderr.toString() || proc.stdout.toString());
+  const result = JSON.parse(proc.stdout.toString());
+  const inspected = JSON.parse(readFileSync(inspectOutput, "utf8"));
+  expect(result.outputPath).toBe(output);
+  expect(inspected.attributes["data-scrolled"]).toBe("true");
+  expect(inspected.attributes["data-outer-scroll"]).toBe("0");
+  expect(readFileSync(output).subarray(0, 4)).toEqual(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]));
+});
 
 test("an invalid hover target returns a useful non-zero failure", () => {
   const dir = scratch();
   const html = join(dir, "hover-missing.html");
-  writeFileSync(html, "<!doctype html><html><body><p>Rendered page</p></body></html>");
+  writeFileSync(html, "<!doctype html><html><body><p>This rendered page is ready for the invalid action check.</p></body></html>");
 
   const proc = Bun.spawnSync(
     ["bun", CLI, `file://${html}`, "--allow-blank", "--act", "hover:[", "--output", join(dir, "missing.png")],
@@ -169,6 +248,7 @@ test("a rendered cursor appears only when hover is the final action", () => {
     `<!doctype html>
 <html>
   <body style="margin:0;background:#f4f5f7;">
+    <p>This rendered browser fixture is ready for hover action.</p>
     <button id="target" style="margin:100px;width:220px;height:80px;cursor:pointer;border:0;border-radius:16px;background:#20242b;color:white;">Premium hover</button>
     <style>
       #target:hover { background: #394150; }
@@ -198,7 +278,7 @@ test("hover cursor survives a handler changing the target selector", () => {
   const html = join(dir, "hover-selector-change.html");
   writeFileSync(
     html,
-    `<!doctype html><html><body><button id="target" style="margin:80px;width:180px;height:80px;cursor:pointer;">Hover</button><script>document.querySelector("#target").addEventListener("mouseenter", event => { event.currentTarget.id = "changed"; });</script></body></html>`,
+    `<!doctype html><html><body><p>This rendered browser fixture is ready for hover action.</p><button id="target" style="margin:80px;width:180px;height:80px;cursor:pointer;">Hover</button><script>document.querySelector("#target").addEventListener("mouseenter", event => { event.currentTarget.id = "changed"; });</script></body></html>`,
   );
 
   const finalHover = Bun.spawnSync(
@@ -220,7 +300,7 @@ test("cursor none does not add a hover cursor to the capture", () => {
   const html = join(dir, "hover-cursor-none.html");
   writeFileSync(
     html,
-    `<!doctype html><html><body><div id="target" style="margin:80px;width:180px;height:80px;cursor:none;background:#4968db;">No cursor</div></body></html>`,
+    `<!doctype html><html><body><p>This rendered browser fixture is ready for hover action.</p><div id="target" style="margin:80px;width:180px;height:80px;cursor:none;background:#4968db;">No cursor</div></body></html>`,
   );
 
   const finalHover = Bun.spawnSync(
@@ -242,7 +322,7 @@ test("hovered links receive a readable URL preview", () => {
   const html = join(dir, "hover-link-preview.html");
   writeFileSync(
     html,
-    `<!doctype html><html><body style="margin:120px;"><a id="target" href="/products/very-long-preview-path?campaign=summer&variant=premium" style="font:600 20px sans-serif;cursor:pointer;">Open product</a></body></html>`,
+    `<!doctype html><html><body style="margin:120px;"><p>This rendered browser fixture is ready for link preview.</p><a id="target" href="/products/very-long-preview-path?campaign=summer&variant=premium" style="font:600 20px sans-serif;cursor:pointer;">Open product</a></body></html>`,
   );
 
   const finalHover = Bun.spawnSync(
@@ -262,7 +342,7 @@ test("hovered links receive a readable URL preview", () => {
 test("hovered links keep their URL preview when the CSS cursor is none", () => {
   const dir = scratch();
   const html = join(dir, "hover-link-none.html");
-  writeFileSync(html, `<!doctype html><html><body style="margin:120px;"><a id="target" href="/hidden-cursor" style="cursor:none;font:600 20px sans-serif;">Hidden cursor link</a></body></html>`);
+  writeFileSync(html, `<!doctype html><html><body style="margin:120px;"><p>This rendered browser fixture is ready for link preview.</p><a id="target" href="/hidden-cursor" style="cursor:none;font:600 20px sans-serif;">Hidden cursor link</a></body></html>`);
 
   const finalHover = Bun.spawnSync(
     ["bun", CLI, `file://${html}`, "--allow-blank", "--act", "hover:#target", "--output", join(dir, "link-none-final.png"), "--json"],
@@ -329,3 +409,53 @@ test("an explicit --publish destination overrides the saved publish key", () => 
   expect(proc.stderr.toString()).toContain("browsershot-nonexistent-remote-explicit");
   expect(proc.stderr.toString()).not.toContain("browsershot-nonexistent-remote-bare");
 }, 120000);
+
+test("platform emulation applies to PNG and HTML captures", () => {
+  const dir = scratch();
+  const html = join(dir, "platform.html");
+  const png = join(dir, "macos.png");
+  const htmlOutput = join(dir, "windows.html");
+  writeFileSync(
+    html,
+    `<!doctype html>
+<html><body><main>
+<script>
+document.write("<h1>" + navigator.platform + "</h1><p>" +
+  navigator.userAgent + "</p><p>" + navigator.userAgentData.platform + "</p>");
+</script>
+</main></body></html>`,
+  );
+  const screenshot = Bun.spawnSync(
+    ["bun", CLI, `file://${html}`, "--platform", "macos", "--expect-text", "MacIntel", "--inspect", "h1", "--output", png, "--json"],
+    { cwd: dir },
+  );
+  const document = Bun.spawnSync(
+    ["bun", CLI, `file://${html}`, "--platform", "windows", "--html", "--output", htmlOutput, "--json"],
+    { cwd: dir },
+  );
+  const linuxHtml = Bun.spawnSync(
+    ["bun", CLI, `file://${html}`, "--platform", "linux", "--html", "--output", join(dir, "linux.html"), "--json"],
+    { cwd: dir },
+  );
+
+  expect(screenshot.exitCode).toBe(0);
+  expect(existsSync(png)).toBe(true);
+  expect(document.exitCode).toBe(0);
+  expect(JSON.parse(screenshot.stdout.toString()).inspected.name).toBe("MacIntel");
+  expect(existsSync(htmlOutput)).toBe(true);
+  const snapshot = JSON.parse(document.stdout.toString()).html as string;
+  expect(snapshot).toContain("Win32");
+  expect(snapshot).toContain("Windows NT 10.0");
+  expect(snapshot).toContain("Windows");
+  expect(linuxHtml.exitCode).toBe(0);
+  const linuxSnapshot = JSON.parse(linuxHtml.stdout.toString()).html as string;
+  expect(linuxSnapshot).toContain("Linux x86_64");
+  expect(linuxSnapshot).toContain("Linux");
+}, 120000);
+
+test("platform flag rejects unknown values before capture", () => {
+  const dir = scratch();
+  const result = Bun.spawnSync(["bun", CLI, "https://example.com", "--platform", "android"], { cwd: dir });
+  expect(result.exitCode).toBe(2);
+  expect(result.stderr.toString()).toContain("--platform must be macos, windows, or linux");
+});

@@ -29,7 +29,8 @@ A quick path changes only URL resolution; every option behaves the same for a co
 
 Use flags when a capture needs more than a simple route:
 
-- `--act` clicks, types, or waits before the capture.
+- `--act` supports `focus`, `click`, `hover`, `press`, `type`, `wait` (milliseconds), and `scroll` with a CSS selector or `up|down|left|right` plus a positive `px` or `%` distance.
+  Directional percentages use viewport height for up/down and width for left/right.
 - `--inspect` checks an element and writes a JSON sidecar. Use
   `--inspect-attr` to check a specific attribute, such as `aria-expanded`.
 - `--expect-text` confirms that the expected page appeared.
@@ -43,12 +44,19 @@ Use flags when a capture needs more than a simple route:
   pretty-prints it. The `--json` result carries it in `html`. It cannot be
   combined with `--box`, `--marker`, `--inspect-note`, `--publish`, or
   `--full-page`.
+- `--platform macos|windows|linux` overrides the browser user agent and
+  platform client hints. It changes browser-reported identity only; native
+  desktop APIs and host capabilities remain unavailable.
+- `--duration <ms>` records a WebM instead of a PNG when positive. It is the
+  additional observation window after readiness, actions, and inspection, not
+  the total video length. Omitted duration uses the saved setting or zero;
+  `--duration 0` disables saved video. Exact output paths must end in `.webm`.
 - `--no-auth`, `--no-expect`, `--no-json`, `--no-with-errors`, and
   `--no-auto-open` disable saved settings for one capture.
 - `--json` prints one machine-readable result object and no successful-run
   human diagnostics on stderr; use it for scripts and coding agents.
 - `--with-errors` writes browser console errors and uncaught page exceptions to
-  `<png basename>.console.json` beside the PNG. The JSON result exposes the
+  `<artifact basename>.console.json` beside the artifact. The JSON result exposes the
   same records inline as `consoleErrors` and the sidecar path as
   `consoleErrorsJsonPath`; it is `null` unless the flag or saved `withErrors`
   setting is enabled. `browsershot config set withErrors` enables it by default.
@@ -73,6 +81,8 @@ written in plaintext. `{route}` uses the pathname of a hash route (a fragment
 beginning with `/`); ordinary anchors are ignored.
 Prefer `--group` and `--label` because they add safe separators automatically;
 use `--output` only when the complete destination matters.
+
+Positive `--duration` uses the same naming rules with a `.webm` suffix.
 
 ## 3. Saved pages
 
@@ -125,9 +135,9 @@ loads, the same as a capture. It needs `authstate` on PATH and a
 ## Check the result
 
 A PNG only proves that a file was written. For reliable checks, use
-`--expect-text` or `--inspect`, then read the JSON output or sidecar. The
-`sha256` value identifies the image without opening it.
+`--expect-text` or `--inspect`, then read the JSON output or sidecar. A WebM
+records the rendered page over time; `sha256` identifies the video bytes.
 
 When reporting a run, include the absolute `outputPath`, what text or element
 you verified, and the exit code if the run failed. `--inspect-attr` reports a
-value but does not assert equality. Do not read PNG files into context.
+value but does not assert equality. Do not read PNG or video files into context.

@@ -93,7 +93,7 @@ function acquirePageLock(root: string): () => void {
   const path = pageLockPath(root);
   mkdirSync(dirname(path), { recursive: true });
   const wait = new Int32Array(new SharedArrayBuffer(4));
-  for (;;) {
+  for (; ;) {
     try {
       mkdirSync(path);
       try {
@@ -311,7 +311,7 @@ function resolveViewport(size: string, page: string): { width: number; height: n
 
 function resolveRouteUrl(route: string, profile: Readonly<ProfileConfig>): string {
   let result = "";
-  if (route.startsWith("/")) {
+  if (route.startsWith("/") || route.startsWith("#/")) {
     if (profile.baseUrl == null) {
       throw new UsageError("quick capture needs a saved baseUrl; run: browsershot config set baseUrl <url>");
     }

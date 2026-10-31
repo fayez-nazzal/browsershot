@@ -30,6 +30,31 @@ test("delay saves as milliseconds and rejects non-positive values", () => {
   expect(run(root, "config", "set", "delay", "9007199254740993").exitCode).toBe(2);
 });
 
+test("duration config saves positive milliseconds and can be unset", () => {
+  const root = scratch();
+  expect(run(root, "config", "set", "duration", "3000").exitCode).toBe(0);
+  expect(run(root, "config", "show").stdout.toString()).toContain('"duration": 3000');
+  for (const value of ["0", "-1", "1.5", "Infinity", "9007199254740992"]) {
+    expect(run(root, "config", "set", "duration", value).exitCode).toBe(2);
+  }
+  expect(run(root, "config", "unset", "duration").exitCode).toBe(0);
+  expect(run(root, "config", "show").stdout.toString()).not.toContain('"duration"');
+});
+test("scrollSpeed config saves a positive pixels-per-second value", () => {
+  const root = scratch();
+  expect(run(root, "config", "set", "scrollSpeed", "2400").exitCode).toBe(0);
+  expect(run(root, "config", "show").stdout.toString()).toContain('"scrollSpeed": 2400');
+  for (const value of ["0", "-1", "1.5", "9007199254740992"]) {
+    expect(run(root, "config", "set", "scrollSpeed", value).exitCode).toBe(2);
+  }
+});
+
+
+test("duration is rejected by config management commands as a capture option", () => {
+  const root = scratch();
+  expect(run(root, "config", "show", "--duration", "3000").exitCode).toBe(2);
+});
+
 test("size saves as WxH and rejects malformed or non-positive dimensions", () => {
   const root = scratch();
   expect(run(root, "config", "set", "size", "360x520").exitCode).toBe(0);

@@ -19,6 +19,18 @@ browsershot config set baseUrl https://example.com
 browsershot /pricing --expect-element '#header' --json
 ```
 
+Hash-router quick routes can use an explicit fragment path. Quote it in the
+shell so `#` reaches Browsershot:
+
+```sh
+browsershot config set baseUrl http://localhost:1420/browser-preview.html
+browsershot '#/settings'
+```
+
+The `#/settings` route replaces any fragment on the saved base URL. A normal
+`/settings` quick path keeps its existing pathname behavior; to make that path
+enter a hash router, save the base URL with a trailing `#/`.
+
 Use `--element '#card'` to capture only the first matching visible element.
 Save it with `browsershot config set element '#card'`, or use `--no-element`
 for one full-page run. Element capture cannot be combined with `--full-page`.
@@ -28,7 +40,7 @@ more than pixels: `browsershot /pricing --element '#card' --html --json` returns
 a self-contained document in the `html` field. It cannot be combined with
 `--box`, `--marker`, `--inspect-note`, `--publish`, or `--full-page`.
 
-Use `--act` for clicks, typing, key presses, waits, or hover states, and `--inspect` for evidence after those actions:
+Use repeatable `--act` flags or semicolon-separated `kind:value` steps for clicks, typing, key presses, waits, hover states, `scroll:<CSS selector>`, and directional scrolls such as `scroll:down(500px)` or `scroll:right(25%)`. They form one ordered, serial action chain that starts after navigation load, render checks, configured delay, and readiness checks. Any scroll action automatically records WebM through the last action. Use `--inspect` for evidence after those actions:
 
 ```sh
 browsershot /dashboard --act 'click:#menu' \
@@ -39,6 +51,16 @@ When `hover:<selector>` is the final action, the capture adds a cursor SVG
 centered on the hovered element's bottom edge. Hovered links also show a
 black-and-white URL preview centered directly below the cursor; the preview
 is ellipsized for long URLs and stays within the capture bounds.
+
+Directional scroll accepts `up`, `down`, `left`, or `right` with a positive `px` or `%` distance. The wheel input is sent with the pointer over the viewport center, so a scrollable element there receives it. Percentages use viewport height for up/down and viewport width for left/right. `--scroll-speed <px/s>` sets wheel speed (default 1000); save it with `config set scrollSpeed 1000`. Every directional scroll runs for distance divided by speed, then waits 400 ms before the next action.
+
+Positive `--duration <ms>` also records WebM, even without scroll actions:
+
+```sh
+browsershot /dashboard --act 'scroll:#target' --inspect '#target' --duration 3000 --json
+```
+
+Duration adds observation time after readiness, actions, and inspection, so navigation and actions make the video longer. Without scroll actions, omitted duration uses saved `duration` or defaults to PNG; explicit `--duration 0` disables saved duration. Scroll actions always select WebM, including with `--duration 0`. Save positive duration with `browsershot config set duration 3000`. Videos use `.webm`; an explicit or saved exact output path must use that suffix. Video cannot be combined with HTML, element-only or full-page capture, annotations, inspection notes, publishing, or explicit `--format`. `--inspect` records JSON element data without drawing an image overlay. Use `--no-html` or `--no-element` to disable saved incompatible settings.
 
 Open a headed browser when a person must sign in or change a setting that a
 script cannot: `browsershot open https://example.com`, or `browsershot open` for
@@ -64,6 +86,8 @@ in plaintext. `{route}` uses the pathname of a hash route (a fragment
 beginning with `/`); ordinary anchors are ignored. Do not combine an explicit
 `--output` with `--group` or `--label`.
 
+A positive `--duration` switches those generated names to `.webm`. Explicit and saved exact output paths must end in `.webm`.
+
 Capture a saved page by name when definitions exist: `browsershot page checkout
 summary --setup empty` captures the `summary` element of the `checkout` page in
 its `empty` setup, and `browsershot page checkout` captures the page itself.
@@ -76,7 +100,7 @@ both. Named captures are written to
 `.browsershot/captures/{page}/{element|page}[_{setup}]_{timestamp}.png` without
 the `_q-{query}` segment.
 
-Read the single JSON object from stdout. Assert on `outputPath`, `sha256`, and `inspected` or `inspectJsonPath`; never read PNG bytes. The seventh field, `captured`, records what the run captured: `{"kind":"url"}` for a URL or quick-route capture, or `{"kind":"page","page":"checkout","element":"summary","setup":"empty"}` for a saved page, where `element` and `setup` are `null` when the run did not name them. `--expect-text` and `--expect-element` are pre-action readiness checks. `--inspect-attr` reports an attribute and does not compare it to an expected value. Report the absolute output path, the text or element verified, and any failure exit code.
+Read the single JSON object from stdout. Assert on `outputPath`, `sha256`, and `inspected` or `inspectJsonPath`; never read PNG or video bytes. The `captured` field records what the run captured: `{"kind":"url"}` for a URL or quick-route capture, or `{"kind":"page","page":"checkout","element":"summary","setup":"empty"}` for a saved page, where `element` and `setup` are `null` when the run did not name them. `--expect-text` and `--expect-element` are pre-action readiness checks. `--inspect-attr` reports an attribute and does not compare it to an expected value. Report the absolute output path, the text or element verified, and any failure exit code.
 
 Component libraries are captured by name: register the running environment once
 with `browsershot library add ui http://localhost:6006 --plugin storybook`, then
@@ -93,5 +117,10 @@ defaults to `.browsershot/captures/{library}/{entry}_{timestamp}.png`.
 Render a theme with `--theme <name>`. For a library the name goes into the plugin's `theme` template (built-in `storybook`: `globals=theme:<name>`), so use names the environment knows, such as `dark`. For a URL or page capture only `light` or `dark` are accepted; they set `prefers-color-scheme`, which does not switch apps that theme by a class on `<html>`.
 
 Save a default with `browsershot config set theme dark`; `--theme` overrides it for one run, and `config unset theme` removes it. A saved name applies where it can (library entries with a `theme` template; URL and page captures only for `light` or `dark`) and is ignored elsewhere. An explicit `--theme` that cannot apply is a usage error.
+
+Use `--platform macos|windows|linux` to override browser-reported desktop
+identity for PNG, HTML, and video captures. This sets the user agent and
+platform client hints only; it does not provide native desktop APIs or host
+capabilities.
 
 See the repository [`README.md`](../../README.md) for uncommon flags and publishing details.

@@ -22,6 +22,8 @@ export interface ProfileConfig {
   withApi?: boolean;
   withWebsockets?: boolean;
   delay?: number;
+  duration?: number;
+  scrollSpeed?: number;
   size?: string;
   theme?: string;
   publish?: string;
@@ -70,6 +72,8 @@ export const PROFILE_SETTINGS: { [Name in ProfileSettingName]-?: ProfileSettingD
   withApi: { kind: "boolean", aliases: ["with-api"] },
   withWebsockets: { kind: "boolean", aliases: ["with-websockets"] },
   delay: { kind: "positive-integer" },
+  duration: { kind: "positive-integer" },
+  scrollSpeed: { kind: "positive-integer" },
   size: {
     kind: "string",
     validate: (value) => {

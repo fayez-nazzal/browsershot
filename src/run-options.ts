@@ -1,5 +1,5 @@
-import { resolve } from "node:path";
-import { parseActions } from "./act.ts";
+import { extname, resolve } from "node:path";
+import { DEFAULT_SCROLL_SPEED, parseActions } from "./act.ts";
 import type { CaptureIdentity, CaptureTarget } from "./capture-target.ts";
 import { parseBoxFlag, parseMarkerFlag, type BoxAnnotation, type MarkerAnnotation } from "./annotate.ts";
 import {
@@ -19,18 +19,18 @@ import { parseThemeName } from "./theme.ts";
 
 export interface CaptureFlags {
   output?: string; group?: string; label?: string; size?: string;
-  "full-page"?: boolean; element?: string; "no-element"?: boolean; setup?: string; delay?: string; verbose?: boolean; "with-errors"?: boolean; "no-with-errors"?: boolean;
+  "full-page"?: boolean; element?: string; "no-element"?: boolean; setup?: string; delay?: string; duration?: string; verbose?: boolean; "with-errors"?: boolean; "no-with-errors"?: boolean;
   "with-resources"?: boolean; "no-with-resources"?: boolean; "with-api"?: boolean; "no-with-api"?: boolean; "with-websockets"?: boolean; "no-with-websockets"?: boolean;
   auth?: boolean; "auth-user"?: string; "auth-credentials"?: string; "auth-redirect"?: string; "auth-purpose"?: string;
   "no-auth"?: boolean; "no-auth-redirect"?: boolean; "expect-text"?: string; "expect-element"?: string; "no-expect"?: boolean;
-  "allow-blank"?: boolean; "allow-status"?: boolean; act?: string; inspect?: string; "inspect-attr"?: string; "inspect-json"?: string; "inspect-note"?: string;
+  "allow-blank"?: boolean; "allow-status"?: boolean; act?: string | string[]; "scroll-speed"?: string; inspect?: string; "inspect-attr"?: string; "inspect-json"?: string; "inspect-note"?: string;
   box?: string[]; marker?: string[]; json?: boolean; "no-json"?: boolean; html?: boolean; "no-html"?: boolean; format?: boolean; "no-format"?: boolean;
   "no-auto-open"?: boolean; "auto-open"?: boolean;
   publish?: string; "publish-size"?: string; "publish-label"?: string; plugin?: string; ready?: string; scope?: string;
-  theme?: string;
+  theme?: string; platform?: string;
 }
 
-type CaptureRunOptions = Omit<CaptureOptions, "cookiesPath" | "openStatePath" | "log">;
+type CaptureRunOptions = Omit<CaptureOptions, "cookiesPath" | "openStatePath" | "log" | "videoDir">;
 
 export interface ResolvedRunOptions {
   cwd: string;
@@ -285,7 +285,7 @@ export function resolveCaptureUrl(
   profile: Readonly<ProfileConfig>,
 ): string {
   try {
-    if (positional.startsWith("/")) {
+    if (positional.startsWith("/") || positional.startsWith("#/")) {
       if (profile.baseUrl == null) {
         throw new UsageError("quick capture needs a saved baseUrl; run: browsershot config set baseUrl <url>");
       }
@@ -317,7 +317,20 @@ export function resolveRunOptions(input: ResolveRunOptionsInput): ResolvedRunOpt
     validateRequiredTextFlags(flags);
     const html = flags["no-html"] === true ? false : flags.html === true || profile.html === true;
     const format = flags["no-format"] === true ? false : flags.format === true || profile.format === true;
-    if (flags.format === true && !html) throw new UsageError("--format needs --html");
+    const durationMs = flags.duration === undefined
+      ? profile.duration ?? 0
+      : nonNegativeInteger("duration", flags.duration);
+    const targetActions = target?.actions ?? [];
+    const actionValues = flags.act === undefined ? [] : Array.isArray(flags.act) ? flags.act : [flags.act];
+    const flagActions = actionValues.flatMap(parseActions);
+    const actions = targetActions.length === 0 && flagActions.length === 0 ? undefined : [...targetActions, ...flagActions];
+    const hasScrollAction = actions?.some((action) => action.kind === "scroll") ?? false;
+    const video = durationMs > 0 || hasScrollAction;
+    const scrollSpeed = flags["scroll-speed"] === undefined
+      ? profile.scrollSpeed ?? DEFAULT_SCROLL_SPEED
+      : nonNegativeInteger("scroll-speed", flags["scroll-speed"]);
+    if (scrollSpeed === 0) throw new UsageError("--scroll-speed must be a positive integer");
+    if (flags.format === true && !html && !video) throw new UsageError("--format needs --html");
     if (html) rejectHtmlConflicts(flags);
     const url = target?.url ?? resolveCaptureUrl(input.positional ?? "", profile);
     const identity = target?.identity ?? { kind: "url" };
@@ -330,14 +343,47 @@ export function resolveRunOptions(input: ResolveRunOptionsInput): ResolvedRunOpt
         ? { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT }
         : requiredSize(profile.size));
     const element = flags["no-element"] === true ? undefined : flags.element ?? target?.element ?? profile.element;
+    if (video) {
+      if (html) {
+        const suggestion = hasScrollAction
+          ? "remove the scroll action to capture a non-video artifact"
+          : flags.html === true ? "omit --html or pass --duration 0" : "pass --no-html";
+        throw new UsageError(`video cannot be combined with --html; ${suggestion}`);
+      }
+      if (element !== undefined) {
+        const suggestion = hasScrollAction
+          ? "remove the scroll action to capture a non-video artifact"
+          : flags.element !== undefined ? "omit --element or pass --duration 0" : "pass --no-element";
+        throw new UsageError(`video cannot be combined with --element; ${suggestion}`);
+      }
+      for (const [name, set] of [
+        ["full-page", flags["full-page"] === true],
+        ["box", (flags.box?.length ?? 0) > 0],
+        ["marker", (flags.marker?.length ?? 0) > 0],
+        ["inspect-note", flags["inspect-note"] !== undefined],
+        ["publish", flags.publish !== undefined],
+        ["format", flags.format === true],
+      ] as const) {
+        if (set) {
+          const suggestion = name === "format"
+            ? hasScrollAction ? "remove the scroll action to capture formatted HTML" : "use --html --duration 0 for formatted HTML"
+            : hasScrollAction ? "remove the scroll action to use this PNG-only option" : "pass --duration 0 to use this PNG-only option";
+          throw new UsageError(`video cannot be combined with --${name}; ${suggestion}`);
+        }
+      }
+    }
     if (element !== undefined && flags["full-page"] === true) {
       throw new UsageError("--element cannot be combined with --full-page; pass --no-element to capture the whole page");
     }
     const captured = effectiveCaptureIdentity(identity, flags);
-    const outputPath = resolveRunOutput(flags, profile, input.paths, input.cwd, url, captured, html ? "html" : "png", input.now);
-    const targetActions = target?.actions ?? [];
-    const flagActions = flags.act === undefined ? [] : parseActions(flags.act);
-    const actions = targetActions.length === 0 && flagActions.length === 0 ? undefined : [...targetActions, ...flagActions];
+    const extension: OutputExtension = video ? "webm" : html ? "html" : "png";
+    const outputPath = resolveRunOutput(flags, profile, input.paths, input.cwd, url, captured, extension, input.now);
+    if (video && extname(outputPath).toLowerCase() !== ".webm") {
+      const configuredOutput = flags.output ?? profile.output;
+      if (configuredOutput !== undefined) {
+        throw new UsageError(`video output path must end in .webm: ${configuredOutput}`);
+      }
+    }
     const inspect = resolveInspect(flags);
     const explicitTheme = flags.theme === undefined ? undefined : parseThemeName(flags.theme);
     if (explicitTheme !== undefined && explicitTheme !== "light" && explicitTheme !== "dark" && identity.kind !== "library") {
@@ -345,6 +391,10 @@ export function resolveRunOptions(input: ResolveRunOptionsInput): ResolvedRunOpt
     }
     const pageTheme = explicitTheme ?? profile.theme;
     const colorScheme = identity.kind !== "library" && (pageTheme === "light" || pageTheme === "dark") ? pageTheme : undefined;
+    const platform = flags.platform;
+    if (platform !== undefined && platform !== "macos" && platform !== "windows" && platform !== "linux") {
+      throw new UsageError("--platform must be macos, windows, or linux");
+    }
 
     return {
       cwd: input.cwd,
@@ -353,13 +403,16 @@ export function resolveRunOptions(input: ResolveRunOptionsInput): ResolvedRunOpt
         url,
         viewport,
         element,
-        artifact: html ? "html" : "png",
+        artifact: video ? "webm" : html ? "html" : "png",
+        durationMs,
+        scrollSpeed,
         fullPage: flags["full-page"] === true,
         delayMs: flags.delay === undefined
           ? profile.delay ?? 0
           : nonNegativeInteger("delay", flags.delay),
         allowBlank: flags["allow-blank"] === true,
         colorScheme,
+        platform,
         allowStatus: flags["allow-status"] === true,
         authRedirect: resolveAuthRedirect(flags, profile, target),
         expectText: expectations.text,

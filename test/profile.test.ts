@@ -77,6 +77,18 @@ test("quick paths append inside hash routes and preserve the query", () => {
   );
 });
 
+test("explicit hash routes replace the base fragment and retain the page URL", () => {
+  expect(resolveQuickUrl("http://localhost:1420/browser-preview.html", "#/settings")).toBe(
+    "http://localhost:1420/browser-preview.html#/settings",
+  );
+  expect(resolveQuickUrl("http://localhost:1420/browser-preview.html#/old", "#/settings?tab=general")).toBe(
+    "http://localhost:1420/browser-preview.html#/settings?tab=general",
+  );
+  expect(() => resolveQuickUrl("http://localhost:1420/browser-preview.html", "#settings")).toThrow(
+    "invalid hash route",
+  );
+});
+
 test("quick paths append to the pathname without a hash route", () => {
   expect(resolveQuickUrl("http://localhost:8990/app?organizationId=8", "clients")).toBe(
     "http://localhost:8990/app/clients?organizationId=8",

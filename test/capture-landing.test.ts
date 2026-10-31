@@ -68,6 +68,25 @@ test("preparePage passes a 200 response through unchanged", async () => {
   await expect(preparePage(page as never, BASE_OPTIONS)).resolves.toBeUndefined();
 });
 
+test("--act render readiness cannot be bypassed with --allow-blank", async () => {
+  const events: string[] = [];
+  const page = fakePage(200, events);
+  page.evaluate = async () => {
+    events.push("render-stats");
+    return { textLength: 0, elementCount: 0 };
+  };
+  page.waitForTimeout = async () => { events.push("render-poll"); };
+
+  await expect(
+    preparePage(page as never, {
+      ...BASE_OPTIONS,
+      actions: [{ kind: "wait", value: "1" }],
+    }),
+  ).rejects.toThrow(/--act requires a rendered page; --allow-blank cannot bypass this guard/);
+  expect(events).toContain("render-stats");
+  expect(events).not.toContain("element:css=#ready");
+});
+
 test("element readiness runs before text assertion", async () => {
   const events: string[] = [];
   const page = fakePage(200, events);

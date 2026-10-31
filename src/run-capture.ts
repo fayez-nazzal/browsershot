@@ -79,7 +79,7 @@ export function sha256Hex(bytes: Uint8Array): string {
 }
 
 export function inspectJsonPath(outputPath: string): string {
-  return `${outputPath.replace(/\.(png|html)$/i, "")}.json`;
+  return `${outputPath.replace(/\.(png|html|webm)$/i, "")}.json`;
 }
 export function consoleErrorsJsonPath(pngPath: string): string {
   const extension = pngPath.match(/\.([^.\\/]*)$/)?.[0];
@@ -220,6 +220,7 @@ async function finishArtifact(
   if (artifact.kind === "png") {
     return { kind: "png", png: deps.drawAnnotations(artifact.png, options.annotations.boxes, options.annotations.markers, runTmp) };
   }
+  if (artifact.kind === "webm") return artifact;
   return options.format ? { kind: "html", html: await deps.formatHtml(artifact.html) } : artifact;
 }
 
@@ -232,7 +233,7 @@ function writeAndReport(
   deps: RunCaptureDependencies,
   io: RunCaptureIO,
 ): SuccessSummary {
-  const bytes = artifact.kind === "png" ? artifact.png : new TextEncoder().encode(artifact.html);
+  const bytes = artifact.kind === "png" ? artifact.png : artifact.kind === "webm" ? artifact.webm : new TextEncoder().encode(artifact.html);
   const quiet = options.report.json;
   const out = options.outputPath;
   if (options.inspectJsonPath != null) {
@@ -352,6 +353,7 @@ export async function runCapture(options: ResolvedRunOptions, io: RunCaptureIO, 
         cookiesPath: auth.jarPath,
         openStatePath: options.auth.openState ? openStatePath(workspace) : undefined,
         log: reportStderr == null ? undefined : (message) => reportStderr(`browsershot: ${message}\n`),
+        videoDir: options.capture.artifact === "webm" ? runTmp : undefined,
       },
       auth.retryCredentials,
       deps,

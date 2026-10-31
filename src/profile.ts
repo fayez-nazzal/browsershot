@@ -59,10 +59,15 @@ export function unsetProfileValue(root: string, name: string): ProfileConfig {
 }
 
 export function resolveQuickUrl(base: string, quickPath: string): string {
-  if (quickPath.trim() === "" || quickPath.startsWith("?") || quickPath.startsWith("#")) {
+  if (quickPath.trim() === "" || quickPath.startsWith("?")) {
     throw new Error(`invalid quick path: ${quickPath}`);
   }
   const url = new URL(base);
+  if (quickPath.startsWith("#/")) {
+    url.hash = quickPath.slice(1);
+    return url.toString();
+  }
+  if (quickPath.startsWith("#")) throw new Error(`invalid hash route: ${quickPath}`);
   const path = quickPath.replace(/^\/+/, "");
   if (url.hash !== "") {
     const route = url.hash.slice(1).replace(/\/+$/, "");

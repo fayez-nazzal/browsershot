@@ -8,8 +8,9 @@ import { inspectElement, readElementRecord, type ElementRecord, type InspectOpti
 import { assertLanding } from "./landing.ts";
 import { mergeStorageState, readOpenState, type StorageStateLike } from "./open-state.ts";
 import { createNetworkCollector, type NetworkAttempt, type NetworkCategory } from "./network-observability.ts";
+import { captureFullPage } from "./scroll.ts";
 
-export type CaptureArtifact = "png" | "html";
+export type CaptureArtifact = "png" | "html" | "webm";
 
 export interface CaptureOptions {
   url: string;
@@ -18,6 +19,10 @@ export interface CaptureOptions {
   element?: string;
   delayMs: number;
   colorScheme?: "light" | "dark";
+  platform?: "macos" | "windows" | "linux";
+  durationMs?: number;
+  scrollSpeed?: number;
+  videoDir?: string;
   cookiesPath?: string;
   openStatePath?: string;
   authRedirect?: string;
@@ -46,7 +51,7 @@ export interface ConsoleErrorRecord {
   truncated?: boolean;
 }
 
-export type CapturedArtifact = { kind: "png"; png: Uint8Array } | { kind: "html"; html: string };
+export type CapturedArtifact = { kind: "png"; png: Uint8Array } | { kind: "html"; html: string } | { kind: "webm"; webm: Uint8Array };
 
 export interface CaptureResult {
   artifact: CapturedArtifact;
@@ -145,7 +150,8 @@ async function openSession(o: CaptureOptions, deps: CaptureDeps, extra: Record<s
   o.log?.("launching chromium headless shell");
   let browser: Browser;
   try {
-    browser = await deps.launchBrowser({ headless: true });
+    // Playwright hides scrollbars in headless mode; preserve the page's rendering.
+    browser = await deps.launchBrowser({ headless: true, ignoreDefaultArgs: ["--hide-scrollbars"] });
   } catch (e) {
     throw improveLaunchError(e as Error);
   }
@@ -157,14 +163,34 @@ async function openSession(o: CaptureOptions, deps: CaptureDeps, extra: Record<s
   if (o.colorScheme !== undefined) {
     contextOptions.colorScheme = o.colorScheme;
   }
-  const context = await browser.newContext(contextOptions);
+  let context: BrowserContext;
+  try {
+    context = await browser.newContext(contextOptions);
+  } catch (error) {
+    try {
+      await browser.close();
+    } catch {
+      // Preserve the context creation failure.
+    }
+    throw error;
+  }
   const session: Session = { context, browser };
   return session;
 }
 
 async function closeSession(session: Session): Promise<void> {
-  await session.context.close();
-  await session.browser.close();
+  let failure: unknown;
+  try {
+    await session.context.close();
+  } catch (error) {
+    failure = error;
+  }
+  try {
+    await session.browser.close();
+  } catch (error) {
+    if (failure === undefined) failure = error;
+  }
+  if (failure !== undefined) throw failure;
 }
 
 async function readBodyText(page: Page): Promise<string> {
@@ -191,7 +217,8 @@ async function readRenderStats(page: Page): Promise<RenderStats> {
 }
 
 async function waitForRender(page: Page, o: CaptureOptions): Promise<void> {
-  if (!o.allowBlank) {
+  const hasActions = o.actions != null && o.actions.length > 0;
+  if (!o.allowBlank || hasActions) {
     let stats = await readRenderStats(page);
     let waited = 0;
     while (renderLooksBlank(stats) && waited < RENDER_POLL_TIMEOUT_MS) {
@@ -200,11 +227,14 @@ async function waitForRender(page: Page, o: CaptureOptions): Promise<void> {
       stats = await readRenderStats(page);
     }
     if (renderLooksBlank(stats)) {
+      const override = hasActions
+        ? "--act requires a rendered page; --allow-blank cannot bypass this guard."
+        : "Pass --allow-blank to capture anyway.";
       throw new Error(
         `page still looks blank after ${RENDER_POLL_TIMEOUT_MS / 1000}s ` +
-          `(~${stats.textLength} chars of text, ${stats.elementCount} elements). ` +
-          `The app may not have rendered: check the URL, the authstate jar, ` +
-          `or raise --delay. Pass --allow-blank to capture anyway.`,
+        `(~${stats.textLength} chars of text, ${stats.elementCount} elements). ` +
+        `The app may not have rendered: check the URL, the authstate jar, ` +
+        `or raise --delay. ${override}`,
       );
     }
   }
@@ -224,6 +254,9 @@ export async function preparePage(page: Page, o: CaptureOptions): Promise<void> 
   assertLanding({ httpStatus, finalUrl, bodyText: "" }, { allowStatus: Boolean(o.allowStatus) });
   o.log?.("waiting for render…");
   await waitForRender(page, o);
+  if (o.actions != null && o.actions.length > 0) {
+    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+  }
   if (o.delayMs > 0) {
     await page.waitForTimeout(o.delayMs);
   }
@@ -246,7 +279,7 @@ export async function preparePage(page: Page, o: CaptureOptions): Promise<void> 
 
 async function playActions(page: Page, o: CaptureOptions): Promise<HoverElementHandle | null> {
   if (o.actions != null) {
-    return runActions(page, o.actions, NAVIGATION_TIMEOUT_MS, o.verbose === true ? (message) => process.stderr.write(`browsershot: ${message}\n`) : undefined);
+    return runActions(page, o.actions, NAVIGATION_TIMEOUT_MS, o.verbose === true ? (message) => process.stderr.write(`browsershot: ${message}\n`) : undefined, o.scrollSpeed);
   }
   return null;
 }
@@ -262,7 +295,8 @@ async function locateElement(page: Page, selector: string): Promise<Locator> {
 
 async function captureScreenshot(page: Page, o: CaptureOptions): Promise<Uint8Array> {
   if (o.element === undefined) {
-    return page.screenshot({ fullPage: o.fullPage });
+    if (o.fullPage) return captureFullPage(page);
+    return page.screenshot({ fullPage: false });
   }
   return (await locateElement(page, o.element)).screenshot();
 }
@@ -272,13 +306,52 @@ async function captureHtml(page: Page, o: CaptureOptions): Promise<string> {
 }
 
 export async function capture(o: CaptureOptions, deps: CaptureDeps = defaultCaptureDeps): Promise<CaptureResult> {
+  if (o.artifact === "webm" && o.videoDir === undefined) {
+    throw new Error("video capture requires a temporary recording directory");
+  }
   let network: NetworkAttempt | undefined;
-  const session = await openSession(o, deps);
+  const session = await openSession(
+    o,
+    deps,
+    o.artifact === "webm" ? { recordVideo: { dir: o.videoDir } } : {},
+  );
   let artifact: CapturedArtifact;
   let inspected: ElementRecord | null = null;
   const consoleErrors: ConsoleErrorRecord[] = [];
+  let sessionClosed = false;
+  let captureFailed = false;
   try {
     const page = await session.context.newPage();
+    if (o.platform !== undefined) {
+      const platforms = {
+        macos: { ua: "Macintosh; Intel Mac OS X 10_15_7", navigator: "MacIntel", hint: "macOS", version: "10.15.7" },
+        windows: { ua: "Windows NT 10.0; Win64; x64", navigator: "Win32", hint: "Windows", version: "10.0.0" },
+        linux: { ua: "X11; Linux x86_64", navigator: "Linux x86_64", hint: "Linux", version: "" },
+      } as const;
+      const selected = platforms[o.platform];
+      const version = session.browser.version();
+      const major = version.split(".")[0]!;
+      const cdp = await session.context.newCDPSession(page);
+      await cdp.send("Network.setUserAgentOverride", {
+        userAgent: `Mozilla/5.0 (${selected.ua}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${version} Safari/537.36`,
+        platform: selected.navigator,
+        userAgentMetadata: {
+          brands: [{ brand: "Chromium", version: major }],
+          fullVersionList: [{ brand: "Chromium", version }],
+          fullVersion: version,
+          platform: selected.hint,
+          platformVersion: selected.version,
+          architecture: "x86",
+          model: "",
+          mobile: false,
+          bitness: "64",
+        },
+      });
+    }
+    const video = o.artifact === "webm" ? page.video() : null;
+    if (o.artifact === "webm" && video == null) {
+      throw new Error("Playwright did not start video recording for this page");
+    }
     const collector = o.network == null || o.network.length === 0 ? undefined : createNetworkCollector(page, o.network);
     if (o.withErrors === true) {
       const recordError = (record: ConsoleErrorRecord): void => {
@@ -325,21 +398,40 @@ export async function capture(o: CaptureOptions, deps: CaptureDeps = defaultCapt
     await preparePage(page, o);
     const hoverTarget = await playActions(page, o);
     if (o.inspect != null) {
-      inspected = o.artifact === "html"
+      inspected = o.artifact === "html" || o.artifact === "webm"
         ? await readElementRecord(page, o.inspect)
         : await inspectElement(page, o.inspect, o.inspectFooter);
     }
-    if (hoverTarget != null && o.artifact !== "html") {
+    if (hoverTarget != null && o.artifact !== "html" && o.artifact !== "webm") {
       await renderHoverCursor(page, hoverTarget, o.fullPage);
     }
     o.log?.("capturing…");
     collector?.markCaptureInitiated();
-    artifact = o.artifact === "html"
-      ? { kind: "html", html: await captureHtml(page, o) }
-      : { kind: "png", png: await captureScreenshot(page, o) };
-    network = collector?.finish();
+    if (o.artifact === "webm") {
+      await page.waitForTimeout(o.durationMs ?? 0);
+      network = collector?.finish({ cutoffAtFinish: true });
+      sessionClosed = true;
+      await closeSession(session);
+      const videoPath = await video!.path();
+      artifact = { kind: "webm", webm: readFileSync(videoPath) };
+    } else {
+      artifact = o.artifact === "html"
+        ? { kind: "html", html: await captureHtml(page, o) }
+        : { kind: "png", png: await captureScreenshot(page, o) };
+      network = collector?.finish();
+    }
+  } catch (error) {
+    captureFailed = true;
+    throw error;
   } finally {
-    await closeSession(session);
+    if (!sessionClosed) {
+      sessionClosed = true;
+      try {
+        await closeSession(session);
+      } catch (error) {
+        if (!captureFailed) throw error;
+      }
+    }
   }
   const result: CaptureResult = { artifact, inspected };
   if (o.withErrors === true) result.consoleErrors = consoleErrors;

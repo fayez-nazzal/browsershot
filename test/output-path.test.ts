@@ -113,3 +113,18 @@ test("html extension swaps the suffix for URL, page and library naming", () => {
   expect(resolveOutputPath({ ...options, identity: { kind: "library", library: "ui", entry: "button--primary" } })).toEndWith(".png");
   expect(resolveOutputPath({ ...options, output: "/tmp/x.png", extension: "html" })).toBe("/tmp/x.png");
 });
+
+test("webm extension applies to URL, page, and library output names", () => {
+  const url = resolveOutputPath({ capturesDirectory: "/repo/captures", url: "https://example.com/demo", now, extension: "webm" });
+  expect(url).toEndWith(".webm");
+  const page = resolveOutputPath({
+    capturesDirectory: "/repo/captures", url: "https://example.com/demo", now, extension: "webm",
+    identity: { kind: "page", page: "checkout", element: "summary", setup: null },
+  });
+  expect(page).toEndWith(".webm");
+  const library = resolveOutputPath({
+    capturesDirectory: "/repo/captures", url: "https://example.com/demo", now, extension: "webm",
+    identity: { kind: "library", library: "ui", entry: "button" },
+  });
+  expect(library).toEndWith(".webm");
+});

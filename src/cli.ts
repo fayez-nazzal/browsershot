@@ -51,9 +51,11 @@ START HERE
     browsershot /pricing
 
   A complete URL uses itself. A path beginning with / is appended to the saved
-  baseUrl in the current directory. The legacy saved key url is accepted. A
-  quick path changes only URL resolution; every capture option behaves the
-  same for a quick path and a complete URL.
+  baseUrl; a hash route beginning with #/ replaces its fragment route. For
+  example, set baseUrl to http://localhost:1420/browser-preview.html and run
+  'browsershot #/settings'. The legacy saved key url is accepted.
+  A quick path changes only URL resolution; every capture option behaves the same
+  for a quick path and a complete URL.
   Invalid saved configuration blocks both forms before capture starts.
 
 BROWSER
@@ -76,7 +78,7 @@ USAGE
   browsershot open [<url-or-path>]
 
 CAPTURE
-  -o, --output <path>       Exact PNG path or template (advanced override)
+  -o, --output <path>       Exact output path or template (advanced override)
       --group <path>        Group under captures, before the host directory
       --label <text>        Describe the captured state in the file name
                             Example: --group PR-123 --label menu-open
@@ -93,8 +95,14 @@ CAPTURE
   a readable state. The default name adds _q-{query} only when a query exists.
       --size <WxH>          Viewport size (default: 1440x900;
                             configurable with config set size)
-      --delay <ms>          Extra wait after load before capture (default: 0;
+      --platform <name>     Emulate desktop browser identity: macos, windows, linux
+                            (does not provide native app APIs)
+      --delay <ms>          Extra wait after load before actions (default: 0;
                             configurable with config set delay)
+      --duration <ms>       Additional video observation time after actions
+                            (default: 0; configurable with config set duration)
+      --scroll-speed <px/s> Directional wheel speed (default: 1000;
+                            configurable with config set scrollSpeed)
       --theme <name>        Render in a theme (default: none; configurable with
                             config set theme). light or dark also sets
                             prefers-color-scheme on URL and page captures.
@@ -106,7 +114,7 @@ CAPTURE
       --auto-open           Open the written capture with the platform viewer
       --no-auto-open        Disable a saved autoOpen setting for this run
       --with-errors         Write console errors and uncaught page errors to a
-                            .console.json sidecar beside the PNG
+                            .console.json sidecar beside the artifact
       --no-with-errors      Disable a saved withErrors setting for this run
       --with-resources      Collect ordinary HTTP resource attempts
       --no-with-resources   Disable a saved withResources setting
@@ -124,8 +132,10 @@ CAPTURE
       --format              Pretty-print the HTML (needs --html)
       --no-format           Disable a saved format setting for this run
   Defaults are the load event, a 30-second navigation timeout, and a 1440x900
-  viewport at 2x device scale. Each capture uses one browser launch and one
-  screenshot.
+  viewport at 2x device scale. A positive --duration or any scroll action writes
+  one .webm artifact. Its milliseconds add observation time after readiness,
+  actions, and inspection; navigation and actions are recorded too, so video
+  can be longer than this window. Exact and saved --output paths use .webm.
 READINESS AND SAFETY
       --expect-text <text>  Require this case-sensitive text before actions
       --expect-element <selector>
@@ -133,12 +143,12 @@ READINESS AND SAFETY
                             element to become visible before actions
       --no-expect           Disable saved and explicit content assertions
       --allow-status        Capture non-2xx/3xx responses
-      --allow-blank         Capture pages that still look blank after polling
+      --allow-blank         Capture blank pages only when no --act is requested
 
   Explicit --expect-text or --expect-element flags replace the saved assertion
   set. If both are present, both must pass. Positive and negative options for
   the same setting are usage errors. Status and blank-render guards stay active
-  when --no-expect is used.
+  when --no-expect is used; --act always requires a rendered page.
 
 AUTHENTICATION
       --auth                Discover credentials and run authstate
@@ -152,34 +162,36 @@ AUTHENTICATION
       --no-auth             Disable saved authentication for this run
 
 INTERACTION AND INSPECTION
-      --inspect <selector>       DevTools style panel over the shot: highlights
-                        the first match and draws its outerHTML plus its
-                        computed role, name and ARIA state over the capture.
+      --inspect <selector>  On images, show a DevTools-style panel over the
+                        capture. On video, record element data without drawing
+                        an overlay. Both modes write inspection JSON.
       --inspect-attr <name>  Emphasise this attribute in the panel and report it
                         first in the JSON, e.g. --inspect-attr aria-expanded
       --inspect-json <path>  Write the recorded element data (role, name, every
                         attribute, outerHTML, box) as JSON. Defaults to the
-                        output path with a .json extension. Read this instead of
-                        the PNG to assert on state without opening an image.
-      --inspect-note <text>  Extra line printed at the bottom of the panel
-      --act <steps>     Drive the page before capturing, so states that only
-                        exist after an interaction can be shot: an open menu, a
-                        focused control, a selected row. Steps are separated by
-                        ; and each is kind:value, where kind is focus, click,
-                        hover, press, type or wait (milliseconds). Selectors are CSS.
-                        Example:
-                        --act 'focus:button[aria-label="More actions"];press:Enter'
-                        Runs after the page has rendered and before --inspect,
-                        so --inspect :focus reports where the keyboard actually
-                        landed.
+                        output path with a .json extension.
+      --inspect-note <text>  Extra line printed at the bottom of the image panel
+      --act <steps>     Repeatable; drive the page before capture. Repeated
+                        flags and semicolon-separated steps form one serial
+                        chain. The first action runs after page load, rendering,
+                        configured delay, and readiness checks; each action
+                        finishes before the next begins.
+                        Kinds: focus, click, hover, press, type, wait (ms),
+                        scroll. Scroll accepts a CSS selector or a direction
+                        with positive pixel or percentage distance:
+                        scroll:#target;scroll:down(500px);scroll:right(25%)
+                        Percentages use viewport height for up/down and width
+                        for left/right. The wheel starts at viewport center.
+                        --scroll-speed <px/s> controls wheel speed (default
+                        1000; config set scrollSpeed). Directional scrolls
+                        run over distance/speed, then settle for 400 ms.
+                        Any scroll action records WebM through the final action.
+                        --duration adds a post-action observation window.
+                        Runs before --inspect.
       --box <x,y,w,h[,color]>  Draw a rectangle outline on the PNG at those pixel
                         coordinates (top-left origin, post-scale); repeatable
       --marker <x,y[,color]>   Draw a point marker (filled dot) on the PNG at
                         that pixel coordinate; repeatable
-
-  Actions run after readiness and before inspection. Steps are separated by ;
-  and use focus, click, hover, press, type or wait. Selectors are CSS.
-  Example: --act 'hover:button#menu;click:button#menu;wait:250'
 
 PUBLISH
       --publish [dest]      Upload with rclone and print a public embed
@@ -191,16 +203,21 @@ PUBLISHING RULES
   setting and fails with usage error 2 if none is saved.
 
 OUTPUT AND ERRORS
-  Without --json, the absolute PNG path is the first stdout line. With --html the
-  file is <name>.html and stdout is the HTML itself (path on stderr). With --json,
-  stdout is exactly one object with outputPath, bytes, sha256, inspectJsonPath,
-  consoleErrorsJsonPath, consoleErrors, inspected, html (null for PNG captures)
-  and publishedUrl. --with-errors writes <png basename>.console.json beside the
-  capture; the errors are also inline in the JSON result. Without --json,
-  formatted errors and human diagnostics are printed on stderr. Successful --json
-  captures emit no human diagnostics.
-  --html cannot be combined with --box, --marker, --inspect-note, --publish,
-  --full-page.
+  Without --json, the absolute artifact path is the first stdout line. With --html the
+  file is <name>.html and stdout is the HTML itself (path on stderr). A scroll
+  action or positive --duration writes <name>.webm; --json keeps html null.
+  JSON stdout is exactly one object with outputPath, bytes, sha256,
+  inspectJsonPath, consoleErrorsJsonPath, consoleErrors, inspected, html and
+  publishedUrl. --with-errors writes <artifact basename>.console.json beside
+  the artifact. The errors are also inline in the JSON result. Without --json,
+  formatted errors and human diagnostics are printed on stderr. Successful
+  --json captures emit no human diagnostics.
+  Video cannot be combined with --html, --element, --full-page, --box, --marker,
+  --inspect-note, --publish, or explicit --format. Use --no-html or --no-element
+  for saved incompatible settings. --duration 0 disables saved duration; to
+  avoid automatically recorded scroll video, remove the scroll action.
+  --inspect and readiness checks remain supported; video inspection writes
+  data without an image overlay.
 
   Exit 0  capture written
   Exit 1  page guard or capture failure
@@ -211,9 +228,10 @@ OUTPUT AND ERRORS
 
 CONFIGURATION
   Canonical saved names: baseUrl, authUser, authRedirect, expectElement,
-  expectText, element, output, group, label, json, autoOpen, html, format,
-  withErrors, delay, size, theme and publish. Use "config set withErrors" to enable
-  error collection by default.
+  withErrors, delay, duration, scrollSpeed, size, theme and publish. duration
+  is a positive integer in milliseconds; scrollSpeed is a positive integer in
+  CSS pixels per second. Use config unset duration or config unset scrollSpeed
+  to remove them. "config set withErrors" enables error collection by default.
   theme is the default for --theme: light or dark applies to URL and page captures,
   and any name applies to library entries whose plugin declares a theme.
   Kebab-case aliases are accepted for set and unset, including base-url,
@@ -275,6 +293,7 @@ export function parseCliArgs(argv: string[]) {
       group: { type: "string" },
       label: { type: "string" },
       size: { type: "string" },
+      platform: { type: "string" },
       element: { type: "string" },
       "no-element": { type: "boolean", default: false },
       setup: { type: "string" },
@@ -294,7 +313,9 @@ export function parseCliArgs(argv: string[]) {
       "auth-purpose": { type: "string" },
       verbose: { type: "boolean", default: false },
       delay: { type: "string" },
-      act: { type: "string" },
+      duration: { type: "string" },
+      act: { type: "string", multiple: true },
+      "scroll-speed": { type: "string" },
       "allow-blank": { type: "boolean", default: false },
       "allow-status": { type: "boolean", default: false },
       "expect-text": { type: "string" },
@@ -485,7 +506,7 @@ function pageSettingsFromFlags(values: CaptureFlags): PageSetup {
     settings.expectText = values["expect-text"];
   }
   if (values.act !== undefined) {
-    settings.act = values.act;
+    settings.act = Array.isArray(values.act) ? values.act.join(";") : values.act;
   }
   if (values.size !== undefined) {
     settings.size = values.size;
@@ -629,15 +650,15 @@ function rejectLibraryFlags(values: CaptureFlags): void {
 function captureFlagPresent(values: CaptureFlags): boolean {
   const text = (
     values.output !== undefined || values.group !== undefined || values.label !== undefined
-    || values.size !== undefined || values.element !== undefined || values.delay !== undefined
-    || values.setup !== undefined || values.act !== undefined || values.inspect !== undefined
+    || values.size !== undefined || values.element !== undefined || values.delay !== undefined || values.duration !== undefined || values["scroll-speed"] !== undefined
+    || flagIsSet(values.act)
     || values.publish !== undefined || values["auth-user"] !== undefined
     || values["auth-credentials"] !== undefined || values["auth-redirect"] !== undefined
     || values["auth-purpose"] !== undefined || values["expect-text"] !== undefined
     || values["expect-element"] !== undefined || values["inspect-attr"] !== undefined
     || values["inspect-json"] !== undefined || values["inspect-note"] !== undefined
     || values["publish-size"] !== undefined || values["publish-label"] !== undefined
-    || values.theme !== undefined
+    || values.theme !== undefined || values.platform !== undefined
   );
   const toggles = (
     values.auth === true || values.json === true || values.verbose === true || values["with-errors"] === true

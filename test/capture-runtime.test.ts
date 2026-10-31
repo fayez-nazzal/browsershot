@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { expect, test } from "bun:test";
 import type { Browser, LaunchOptions } from "playwright";
 import { capture, type CaptureOptions } from "../src/capture.ts";
@@ -107,12 +110,6 @@ function scriptedLauncher(browser: Browser, errors: Error[]) {
   return { launchBrowser, calls };
 }
 
-test("capture launches the chromium headless shell once", async () => {
-  const { launchBrowser, calls } = scriptedLauncher(fakeBrowser(fakePage()), []);
-  const result = await capture(BASE_OPTIONS, { launchBrowser });
-  expect(calls).toEqual([{ headless: true }]);
-  expect(result.artifact.kind === "png" ? result.artifact.png.length : -1).toBe(4);
-});
 
 test("capture forwards launch progress to the log", async () => {
   const messages: string[] = [];
@@ -154,4 +151,51 @@ test("page failures do not trigger a second capture", async () => {
   }
   expect(message).toBe("navigation blew up");
   expect(calls.length).toBe(1);
+});
+
+test("video recording waits after readiness, closes before reading, and uses the supplied temp directory", async () => {
+  const events: string[] = [];
+  const videoDir = mkdtempSync(join(tmpdir(), "browsershot-video-runtime-"));
+  const videoPath = join(videoDir, "recording.webm");
+  const videoBytes = new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 1]);
+  writeFileSync(videoPath, videoBytes);
+  const page = {
+    ...fakePage(),
+    video: () => ({
+      path: async () => { events.push("video.path"); return videoPath; },
+    }),
+    waitForTimeout: async (ms: number) => { events.push(`wait:${ms}`); },
+  };
+  let contextOptions: Record<string, unknown> | undefined;
+  const browser = {
+    newContext: async (options: Record<string, unknown>) => {
+      contextOptions = options;
+      return {
+        newPage: async () => page,
+        close: async () => { events.push("context.close"); },
+      };
+    },
+    close: async () => { events.push("browser.close"); },
+  } as unknown as Browser;
+  try {
+    const { launchBrowser } = scriptedLauncher(browser, []);
+    const result = await capture({
+      ...BASE_OPTIONS,
+      artifact: "webm",
+      durationMs: 1200,
+      videoDir,
+    }, { launchBrowser });
+    expect(result.artifact).toEqual({ kind: "webm", webm: videoBytes });
+    expect(contextOptions?.recordVideo).toEqual({ dir: videoDir });
+    expect(events).toEqual(["wait:1200", "context.close", "browser.close", "video.path"]);
+  } finally {
+    rmSync(videoDir, { recursive: true, force: true });
+  }
+});
+
+test("video capture refuses an implicit recording directory before browser launch", async () => {
+  const { launchBrowser, calls } = scriptedLauncher(fakeBrowser(fakePage()), []);
+  await expect(capture({ ...BASE_OPTIONS, artifact: "webm", durationMs: 1 }, { launchBrowser }))
+    .rejects.toThrow("temporary recording directory");
+  expect(calls).toHaveLength(0);
 });

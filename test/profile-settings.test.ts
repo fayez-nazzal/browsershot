@@ -12,7 +12,7 @@ test("the registry contains every persistent setting exactly once", () => {
   expect(PROFILE_SETTING_NAMES).toEqual([
     "baseUrl", "authUser", "authRedirect", "expectElement", "expectText", "element",
     "output", "group", "label", "json", "autoOpen", "html", "format", "withErrors",
-    "withResources", "withApi", "withWebsockets", "delay", "size", "theme", "publish",
+    "withResources", "withApi", "withWebsockets", "delay", "duration", "scrollSpeed", "size", "theme", "publish",
   ]);
   expect(Object.keys(PROFILE_SETTINGS)).toEqual([...PROFILE_SETTING_NAMES]);
   expect(PROFILE_SETTINGS.json.kind).toBe("boolean");
@@ -21,6 +21,8 @@ test("the registry contains every persistent setting exactly once", () => {
   expect(PROFILE_SETTINGS.baseUrl.kind).toBe("string");
   expect(PROFILE_SETTINGS.delay.kind).toBe("positive-integer");
   expect(PROFILE_SETTINGS.size.kind).toBe("string");
+  expect(PROFILE_SETTINGS.duration.kind).toBe("positive-integer");
+  expect(PROFILE_SETTINGS.scrollSpeed.kind).toBe("positive-integer");
 });
 
 test("canonical names and legacy aliases resolve through one registry", () => {
@@ -50,6 +52,7 @@ test("command values use descriptor kinds and validators", () => {
   expect(profileValueFromCommand("theme", "dark")).toEqual({ name: "theme", value: "dark" });
   expect(() => profileValueFromCommand("theme", "not a theme")).toThrow(UsageError);
   expect(() => profileValueFromCommand("unknown", "x")).toThrow(UsageError);
+  expect(profileValueFromCommand("duration", "2500")).toEqual({ name: "duration", value: 2500 });
 });
 
 test("raw validation normalizes legacy url and rejects invalid combinations", () => {
@@ -65,4 +68,6 @@ test("raw validation normalizes legacy url and rejects invalid combinations", ()
   expect(() => validateProfileConfig({ theme: "not a theme" })).toThrow(UsageError);
   expect(() => validateProfileConfig({ json: "true" })).toThrow("must be boolean");
   expect(() => validateProfileConfig({ mystery: "x" })).toThrow(UsageError);
+  expect(validateProfileConfig({ duration: 2500 })).toEqual({ duration: 2500 });
+  expect(() => validateProfileConfig({ duration: 0 })).toThrow("positive integer");
 });

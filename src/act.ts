@@ -1,3 +1,5 @@
+import { viewportCenter } from "./scroll.ts";
+import { performance } from "node:perf_hooks";
 import type { ElementHandle, Page } from "playwright";
 
 /**
@@ -8,7 +10,7 @@ import type { ElementHandle, Page } from "playwright";
  * steps declarative and tiny so the shot stays reproducible from the command line alone.
  */
 
-export type ActionKind = "focus" | "click" | "hover" | "press" | "type" | "wait";
+export type ActionKind = "focus" | "click" | "hover" | "press" | "type" | "wait" | "scroll";
 
 export interface Action {
   kind: ActionKind;
@@ -17,9 +19,38 @@ export interface Action {
 
 export type HoverElementHandle = ElementHandle<HTMLElement | SVGElement>;
 
-const KINDS: ActionKind[] = ["focus", "click", "hover", "press", "type", "wait"];
+const KINDS: ActionKind[] = ["focus", "click", "hover", "press", "type", "wait", "scroll"];
 const STEP_SEPARATOR = ";";
 const DEFAULT_STEP_SETTLE_MS = 400;
+export const DEFAULT_SCROLL_SPEED = 1000;
+const SCROLL_TICK_MS = 50;
+
+type ScrollDirection = "up" | "down" | "left" | "right";
+interface DirectionalScroll {
+  direction: ScrollDirection;
+  amount: number;
+  unit: "px" | "%";
+}
+
+function parseDirectionalScroll(value: string): DirectionalScroll | null {
+  const expression = /^([a-z]+)\(([^()]*)\)$/i.exec(value);
+  if (expression == null) {
+    if (/^(up|down|left|right)\(/i.test(value)) {
+      throw new Error("--act scroll needs a positive pixel or percentage distance, e.g. scroll:down(500px)");
+    }
+    return null;
+  }
+  const direction = expression[1]!.toLowerCase();
+  if (!["up", "down", "left", "right"].includes(direction)) {
+    throw new Error(`unknown scroll direction "${expression[1]}"; use up, down, left, or right`);
+  }
+  const distance = /^(\d+(?:\.\d+)?)(px|%)$/i.exec(expression[2]!);
+  const amount = distance == null ? Number.NaN : Number(distance[1]);
+  if (distance == null || !Number.isFinite(amount) || amount <= 0 || amount > Number.MAX_SAFE_INTEGER) {
+    throw new Error("--act scroll needs a positive pixel or percentage distance, e.g. scroll:down(500px)");
+  }
+  return { direction: direction as ScrollDirection, amount, unit: distance[2]!.toLowerCase() as "px" | "%" };
+}
 
 export function parseActions(raw: string): Action[] {
   const parts = raw.split(STEP_SEPARATOR).map((part) => part.trim());
@@ -44,12 +75,19 @@ export function parseActions(raw: string): Action[] {
     if ("wait" === kind && !/^\d+$/.test(value)) {
       throw new Error(`--act step "${step}" needs a whole number of milliseconds`);
     }
+    if ("scroll" === kind) parseDirectionalScroll(value);
     actions.push({ kind, value });
   }
   return actions;
 }
 
-export async function runActions(page: Page, actions: Action[], timeoutMs: number, onStep?: (message: string) => void): Promise<HoverElementHandle | null> {
+export async function runActions(
+  page: Page,
+  actions: Action[],
+  timeoutMs: number,
+  onStep?: (message: string) => void,
+  scrollSpeed = DEFAULT_SCROLL_SPEED,
+): Promise<HoverElementHandle | null> {
   let finalHoverTarget: HoverElementHandle | null = null;
   for (const [index, action] of actions.entries()) {
     onStep?.(`act: ${action.kind}:${action.value}`);
@@ -67,6 +105,33 @@ export async function runActions(page: Page, actions: Action[], timeoutMs: numbe
       await page.waitForTimeout(DEFAULT_STEP_SETTLE_MS);
       continue;
     }
+    if ("scroll" === action.kind) {
+      const scroll = parseDirectionalScroll(action.value);
+      if (scroll != null) {
+        const viewport = page.viewportSize();
+        if (viewport == null) throw new Error("directional scrolling requires a page viewport");
+        const center = viewportCenter(page);
+        let amount = scroll.amount;
+        if (scroll.unit === "%") {
+          amount = amount / 100 * (scroll.direction === "left" || scroll.direction === "right" ? viewport.width : viewport.height);
+        }
+        const deltaX = scroll.direction === "left" ? -amount : scroll.direction === "right" ? amount : 0;
+        const deltaY = scroll.direction === "up" ? -amount : scroll.direction === "down" ? amount : 0;
+        const durationMs = amount / scrollSpeed * 1000;
+        const ticks = Math.max(1, Math.ceil(durationMs / SCROLL_TICK_MS));
+        const tickMs = durationMs / ticks;
+        await page.mouse.move(center.x, center.y);
+        const scrollStartedAt = performance.now();
+        for (let tick = 0; tick < ticks; tick += 1) {
+          await page.mouse.wheel(deltaX / ticks, deltaY / ticks);
+          const tickDeadline = scrollStartedAt + (tick + 1) * tickMs;
+          const waitMs = tickDeadline - performance.now();
+          if (waitMs > 0) await page.waitForTimeout(waitMs);
+        }
+        await page.waitForTimeout(DEFAULT_STEP_SETTLE_MS);
+        continue;
+      }
+    }
     const target = page.locator(action.value).first();
     await target.waitFor({ state: "attached", timeout: timeoutMs });
     if ("focus" === action.kind) {
@@ -76,6 +141,8 @@ export async function runActions(page: Page, actions: Action[], timeoutMs: numbe
         finalHoverTarget = await target.elementHandle({ timeout: timeoutMs });
       }
       await target.hover({ timeout: timeoutMs });
+    } else if ("scroll" === action.kind) {
+      await target.scrollIntoViewIfNeeded({ timeout: timeoutMs });
     } else {
       await target.click({ timeout: timeoutMs });
     }

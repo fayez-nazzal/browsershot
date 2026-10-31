@@ -42,6 +42,19 @@ test("the runner executes one shared pipeline and always cleans run temp", async
   expect(readdirSync(join(cwd, ".browsershot", "tmp"))).toEqual([]);
 });
 
+test("human capture progress is passed through the capture logger", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "browsershot-runner-progress-"));
+  const options = optionsFor(cwd, { report: { json: false, autoOpen: false } });
+  const { io, stderr } = recordingIo();
+  await runCapture(options, io, {
+    capture: async (captureOptions) => {
+      captureOptions.log?.("navigating fixture");
+      return captureResult();
+    },
+  });
+  expect(stderr.join("")).toContain("browsershot: navigating fixture");
+});
+
 test("sha256Hex hashes bytes to lowercase hex", () => {
   const empty = sha256Hex(new Uint8Array());
   expect(empty).toBe("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
@@ -378,4 +391,37 @@ test("inspection sidecars of an HTML capture drop the .html suffix", async () =>
   });
   expect(summary.inspectJsonPath).toBe(join(cwd, "capture.json"));
   expect(emptySuccess().html).toBeNull();
+});
+
+test("webm artifacts preserve video bytes, use the run temp directory, and skip image and HTML processing", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "browsershot-runner-webm-"));
+  const bytes = new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 1, 2, 3]);
+  const options = optionsFor(cwd, {
+    outputPath: join(cwd, "capture.webm"),
+    capture: { url: "https://example.test", fullPage: false, delayMs: 0, allowBlank: false, artifact: "webm", durationMs: 1000 },
+  });
+  let videoDir: string | undefined;
+  const { io, stdout } = recordingIo();
+  const summary = await runCapture(options, io, {
+    capture: async (captureOptions) => {
+      videoDir = captureOptions.videoDir;
+      expect(captureOptions.artifact).toBe("webm");
+      expect(videoDir).toBeDefined();
+      return {
+        artifact: { kind: "webm", webm: bytes },
+        inspected: { role: "button", name: "Target", attributes: {}, outerHTML: "<button>Target</button>" } as never,
+      };
+    },
+    drawAnnotations: () => { throw new Error("unexpected PNG annotation"); },
+    formatHtml: async () => { throw new Error("unexpected HTML formatting"); },
+  });
+  expect(readFileSync(options.outputPath)).toEqual(bytes);
+  expect(summary.bytes).toBe(bytes.length);
+  expect(summary.sha256).toBe(sha256Hex(bytes));
+  expect(summary.html).toBeNull();
+  expect(JSON.parse(stdout.join(""))).toEqual(summary);
+  expect(summary.inspectJsonPath).toBe(join(cwd, "capture.json"));
+  expect(JSON.parse(readFileSync(summary.inspectJsonPath!, "utf8")).name).toBe("Target");
+  expect(videoDir).toBeDefined();
+  expect(existsSync(videoDir!)).toBe(false);
 });

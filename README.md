@@ -1,12 +1,12 @@
 # browsershot
 
-Capture a web page as a PNG, from one command.
+Capture a web page as a PNG, HTML document, or opt-in video from one command.
 
 ```sh
 browsershot https://example.com
 ```
 
-By default, stdout contains the absolute PNG path. Add `--json` for a structured result.
+By default, stdout contains the absolute PNG path. Positive `--duration` writes a WebM instead; `--json` prints a structured result.
 
 - Capture whole pages or individual components.
 - Interact with a page and inspect the resulting UI state.
@@ -45,6 +45,15 @@ browsershot /pricing
 
 Settings live in `.browsershot/config.json` in this directory. A complete URL uses itself instead of the saved base.
 
+For hash-based routers, pass a route beginning with `#/`; it replaces the
+fragment route while keeping the saved base URL's page:
+
+```sh
+browsershot config set baseUrl http://localhost:1420/browser-preview.html
+browsershot '#/settings'
+```
+
+
 | Task | Command |
 | --- | --- |
 | Full page | `browsershot /pricing --full-page` |
@@ -53,6 +62,21 @@ Settings live in `.browsershot/config.json` in this directory. A complete URL us
 | Grouped evidence | `browsershot /pricing --group PR-123 --label desktop` |
 
 `--size` changes the viewport; it does not emulate a device. `--element` and `--full-page` cannot be combined. Use `--no-element` to override a saved element selector.
+
+`--platform` overrides the desktop browser identity for one capture. It accepts
+`macos`, `windows`, or `linux` and sets the user agent plus browser platform
+client hints. It applies to PNG, HTML, and video captures; viewport dimensions
+are unchanged. This only changes browser-reported identity. It does not run a
+native desktop host, provide Tauri APIs, or grant native capabilities.
+
+```sh
+browsershot /settings --platform macos --full-page --no-auto-open
+browsershot /settings --platform windows --html
+```
+
+The option is per-run and is not saved in project config.
+`--full-page` includes content from the scrollable element beneath the viewport center, as well as normal document scrolling. For pages with an internally scrolling main region, keep that region under the center of the viewport in the state being captured.
+
 
 A grouped capture has an illustrative shape such as `.browsershot/captures/PR-123/localhost-3000/pricing_desktop_<timestamp>.png` (the timestamp is omitted here). Host and other path values are made safe, so `localhost:3000` becomes `localhost-3000`.
 
@@ -67,6 +91,20 @@ browsershot page checkout summary --html --json
 
 The file is written as `<name>.html` through the same output, sidecar, and SHA-256 pipeline as a PNG. Without `--json` stdout is the HTML and the path goes to stderr; with `--json` the object carries the document in `html`. `--html` cannot be combined with `--box`, `--marker`, `--inspect-note`, `--publish`, or `--full-page`; `--inspect` still records the element JSON without drawing the overlay. Sibling-dependent selectors (`+`, `~`, `:nth-child`) and canvas or video pixels are not preserved for element captures. Save defaults with `config set html` and `config set format`.
 
+## Capture video
+
+Directional scroll actions automatically record a WebM, even when `--duration` is omitted. Recording starts before navigation and runs through the last action; a positive `--duration <ms>` adds observation time after actions and inspection.
+
+```sh
+browsershot / --act 'scroll:down(2000px)' --act 'scroll:up(2000px)'
+browsershot /dashboard --act 'scroll:#target' --inspect '#target' --duration 3000 --json
+browsershot config set duration 3000
+browsershot config set scrollSpeed 1200
+```
+Without scroll actions, positive explicit or saved `duration` selects video; otherwise omission yields PNG. `--duration 0` disables saved duration but not automatic scroll video.
+
+Videos use the same URL, page, library, group, and label naming rules with a `.webm` suffix. An explicit or saved exact `output` path must end in `.webm` (case-insensitive). Video cannot be combined with HTML, element-only capture (including a saved/page element), full-page capture, boxes, markers, inspection notes, publishing, or explicit `--format`. Use `--no-html` or `--no-element` to disable the relevant saved setting; automatically recorded scrolling requires removing the scroll action to return to PNG. `--inspect` writes element data without drawing an image panel.
+
 ## Capture UI state
 
 Use readiness checks before interaction and inspection after it:
@@ -80,9 +118,9 @@ browsershot /dashboard \
   --json
 ```
 
-The order is **readiness → actions → inspection → screenshot**. `--inspect-attr` reports and highlights an attribute; it does not assert its value. A script can check `inspected.attributes["aria-expanded"] === "true"`. Inspection also creates a JSON sidecar beside the PNG.
+The order is **readiness → actions → inspection → artifact**. `--inspect-attr` reports and highlights an attribute; it does not assert its value. A script can check `inspected.attributes["aria-expanded"] === "true"`. Inspection also creates a JSON sidecar beside the output artifact.
 
-For agents, use JSON and sidecar fields for programmatic checks and the screenshot for visual review. Do not put raw PNG bytes in text context. See the bundled [`AGENTS.md`](AGENTS.md) and [`skills/browsershot/SKILL.md`](skills/browsershot/SKILL.md) for operational recipes.
+For agents, use JSON and sidecar fields for programmatic checks and the PNG for visual review. Do not put raw image or video bytes in text context. See the bundled [`AGENTS.md`](AGENTS.md) and [`skills/browsershot/SKILL.md`](skills/browsershot/SKILL.md) for operational recipes.
 
 ## Open a browser
 
@@ -116,10 +154,12 @@ Run `browsershot --help` for the complete flag list and `browsershot --version` 
 <details>
 <summary>Saved defaults and one-run overrides</summary>
 
-`config set` saves project defaults; `config unset` removes a setting. Boolean settings are set without a value. Delay is saved as a positive integer in milliseconds, and size is saved as `WxH` with positive integer dimensions:
+`config set` saves project defaults; `config unset` removes a setting. Boolean settings are set without a value. Delay and duration are saved as positive safe integers in milliseconds, scroll speed is a positive integer in CSS pixels per second, and size is saved as `WxH` with positive integer dimensions. The per-run `--duration` flag also accepts zero to disable saved duration-based video:
 
 ```sh
 browsershot config set delay 3000
+browsershot config set duration 3000
+browsershot config set scrollSpeed 1200
 browsershot config set size 390x844
 browsershot config set theme dark
 ```
@@ -132,7 +172,7 @@ browsershot config unset expectElement
 browsershot config path
 ```
 
-Canonical settings are `baseUrl`, `authUser`, `authRedirect`, `expectElement`, `expectText`, `element`, `output`, `group`, `label`, `json`, `autoOpen`, `html`, `format`, `withErrors`, `delay`, `size`, and `publish`. Accepted aliases are `base-url`, `url`, `auth-user`, `auth-redirect`, `expect-element`, `expect-text`, `auto-open`, and `with-errors`. Legacy JSON `url` is read as `baseUrl`; reads do not rewrite or create the workspace, and explicit writes use canonical names. `browsershot config set withErrors` enables error collection for captures by default. Saved delay applies when `--delay` is omitted; an explicit `--delay` wins. Saved size applies when no page, setup, or `--size` supplies a viewport; a page or setup size beats the saved project size, and `--size` beats both.
+Canonical settings are `baseUrl`, `authUser`, `authRedirect`, `expectElement`, `expectText`, `element`, `output`, `group`, `label`, `json`, `autoOpen`, `html`, `format`, `withErrors`, `delay`, `duration`, `scrollSpeed`, `size`, `theme`, and `publish`. Accepted aliases are `base-url`, `url`, `auth-user`, `auth-redirect`, `expect-element`, `expect-text`, `auto-open`, and `with-errors`. Legacy JSON `url` is read as `baseUrl`; reads do not rewrite or create the workspace, and explicit writes use canonical names. `browsershot config set withErrors` enables error collection for captures by default. Saved delay applies when `--delay` is omitted; an explicit `--delay` wins. Saved duration selects video for non-scroll runs unless explicitly overridden; scroll actions always select video. Saved size applies when no page, setup, or `--size` supplies a viewport; a page or setup size beats the saved project size, and `--size` beats both.
 
 Flags override saved defaults. Per-run disabling flags include `--no-auth`, `--no-auth-redirect`, `--no-expect`, `--no-element`, `--no-json`, `--no-html`, `--no-format`, `--no-with-errors`, and `--no-auto-open`. Positive and negative flags for the same setting conflict. Explicit `--expect-text` or `--expect-element` replaces the entire saved expectation set; both explicit checks must pass when both are supplied. `--no-expect` disables content assertions, not HTTP or blank-page guards.
 
@@ -263,36 +303,36 @@ The default viewport is `1440x900` at 2× scale; a saved `size` or `--size WxH` 
 
 `config set theme <name>` saves a default, so captures render that theme without `--theme`. `--theme` overrides it for one run, and `config unset theme` removes it. The saved default is best effort: a library entry uses it only when its plugin declares a `theme` template, and a URL or page capture uses it only when it is `light` or `dark`. A saved library-only name such as `sepia` therefore never breaks URL captures. An explicit `--theme` that cannot apply still fails.
 
-HTTP and blank-render guards catch common false captures. Override them with `--allow-status` and `--allow-blank` when intentional. HTTP 401/403 remain authentication failures even with `--allow-status`, because the authentication check runs first. A render guard is not proof that the intended UI is correct.
+HTTP and blank-render guards catch common false captures. `--allow-status` overrides HTTP status failures other than authentication failures. `--allow-blank` overrides the render guard only when no actions are requested; `--act` always waits for a rendered page before the first action. A render guard is not proof that the intended UI is correct.
 
-Actions are per-run and use semicolon-separated `kind:value` steps. Supported kinds are `focus`, `click`, `hover`, `press`, `type`, and `wait` (milliseconds):
+Actions use one serial chain across repeatable `--act` flags and semicolon-separated steps within each flag. Execution starts after navigation load, rendering, configured delay, and readiness checks. Any `scroll` action automatically records WebM from navigation through the last action. Supported kinds are `focus`, `click`, `hover`, `press`, `type`, `wait` (milliseconds), and `scroll`, which accepts either a CSS selector or a direction with a positive `px` or `%` distance:
 
 ```sh
-browsershot /settings --act 'focus:#name;type:Ada;press:Tab;wait:300'
+browsershot /settings --act 'focus:#name;type:Ada;press:Tab;scroll:#target;scroll:down(500px);scroll:right(25%);wait:300'
 ```
-`--inspect` records the first matching element. `--inspect-attr` highlights an attribute, `--inspect-json <path>` chooses the sidecar path, and `--inspect-note <text>` adds a note. A final hover can add a cursor/link preview.
+`scroll:#target` waits for the first matching element to attach and scrolls it into view. `scroll:up(500px)`, `scroll:down(500px)`, `scroll:left(500px)`, and `scroll:right(500px)` send wheel input in that direction with the pointer over the viewport center, so a scrollable element there receives the input. Percentages are relative to the viewport height for up/down and width for left/right. Directional scroll runs at 1000 CSS pixels per second by default; set `--scroll-speed <px/s>` or `config set scrollSpeed <px/s>` to change it. `--inspect` records the first matching element. `--inspect-attr` highlights an attribute, `--inspect-json <path>` chooses the sidecar path, and `--inspect-note <text>` adds an image-panel note. A final hover can add a cursor/link preview to image captures.
 
-`--with-errors` collects browser console errors and uncaught page exceptions during the capture, including readiness, actions, inspection, and screenshot preparation. It writes `<png basename>.console.json` beside the PNG, such as `capture.console.json`; for an explicit non-`.png` output, the final extension is replaced with `.console.json`. Warnings, informational console messages, and failed requests are excluded.
+`--with-errors` collects browser console errors and uncaught page exceptions during the capture, including readiness, actions, inspection, and artifact preparation. It writes `<artifact basename>.console.json` beside the artifact, such as `capture.console.json`; for an explicit output, the final extension is replaced with `.console.json`. Warnings, informational console messages, and failed requests are excluded.
 Repeat `--box x,y,w,h[,color]` and `--marker x,y[,color]` for coordinate evidence. Coordinates use post-scale PNG pixels and a top-left origin. These annotations require macOS because they use `osascript`.
 
 Successful `--json` output has these fields:
 
 | Field | Meaning |
 | --- | --- |
-| `outputPath` | Absolute PNG path |
-| `bytes` | PNG byte count |
-| `sha256` | PNG SHA-256 digest |
+| `outputPath` | Absolute PNG or WebM path (or HTML path when `--html` is active) |
+| `bytes` | Artifact byte count |
+| `sha256` | Artifact SHA-256 digest |
 | `inspectJsonPath` | Inspection sidecar path, or `null` |
 | `consoleErrorsJsonPath` | Console-error sidecar path, or `null` |
 | `consoleErrors` | Collected console and page errors when enabled, or `null` |
 | `inspected` | Inspection result, or `null` |
-| `html` | The captured HTML document for `--html` runs, or `null` for PNG captures |
+| `html` | The captured HTML document for `--html` runs, or `null` for PNG and WebM captures |
 | `publishedUrl` | Public URL, or `null` |
 | `captured` | What the run captured: `{"kind": "url"}` for an ad-hoc capture, or the saved page or library entry identity |
 
-With `--json`, exactly one object is emitted on stdout and successful captures emit no human diagnostics on stderr; when error collection is enabled, `consoleErrors` is included inline. Without JSON, human diagnostics use stderr, formatted collected errors are printed there, and the absolute PNG path remains first on stdout. Successful publishing additionally prints a Markdown embed. JSON success is emitted only after requested sidecar and publishing work succeeds.
+With `--json`, exactly one object is emitted on stdout and successful captures emit no human diagnostics on stderr; when error collection is enabled, `consoleErrors` is included inline. Without JSON, human diagnostics use stderr, formatted collected errors are printed there, and the absolute artifact path remains first on stdout (HTML output itself is stdout for `--html`). Successful publishing additionally prints a Markdown embed. JSON success is emitted only after requested sidecar and publishing work succeeds.
 
-Exit codes: `0` success; `1` capture or page-guard failure; `2` usage, conflicting flags, or invalid config; `3` Authstate or credentials environment failure; `4` capture written but sidecar failed; `5` PNG written but publishing failed. In the last two cases the capture file remains and there is no successful JSON result.
+Exit codes: `0` success; `1` capture or page-guard failure; `2` usage, conflicting flags, or invalid config; `3` Authstate or credentials environment failure; `4` capture written but sidecar failed; `5` PNG written but publishing failed. Publishing is incompatible with video.
 
 </details>
 
