@@ -6,7 +6,7 @@ import { renderHoverCursor } from "./hover-cursor.ts";
 import { snapshotHtml } from "./html-snapshot.ts";
 import { inspectElement, readElementRecord, type ElementRecord, type InspectOptions } from "./inspect.ts";
 import { assertLanding } from "./landing.ts";
-import { mergeStorageState, readOpenState, type StorageStateLike } from "./open-state.ts";
+import { mergeStorageState, readOpenState, withoutCookies, type StorageStateLike } from "./open-state.ts";
 import { createNetworkCollector, type NetworkAttempt, type NetworkCategory } from "./network-observability.ts";
 import { captureFullPage } from "./scroll.ts";
 
@@ -25,6 +25,7 @@ export interface CaptureOptions {
   videoDir?: string;
   cookiesPath?: string;
   openStatePath?: string;
+  openStateAuth?: boolean;
   authRedirect?: string;
   allowBlank: boolean;
   inspect?: InspectOptions;
@@ -136,13 +137,14 @@ export function improveLaunchError(error: Error): Error {
 }
 
 // The authstate jar is passed as a path. When `browsershot open` saved a snapshot,
-// the two are merged in memory with the jar winning, so settings made by hand (a
-// theme) apply while a refreshed login is never shadowed by stale snapshot cookies.
+// its localStorage always seeds the capture; its cookies (sign-ins) only when the
+// run requests authentication. The jar's values win over the snapshot.
 function resolveStorageState(o: CaptureOptions): string | StorageStateLike | undefined {
   const snapshot = o.openStatePath == null ? null : readOpenState(o.openStatePath);
   if (snapshot == null) return o.cookiesPath;
-  if (o.cookiesPath == null) return snapshot;
-  return mergeStorageState(snapshot, JSON.parse(readFileSync(o.cookiesPath, "utf8")) as StorageStateLike);
+  const base = o.openStateAuth === true ? snapshot : withoutCookies(snapshot);
+  if (o.cookiesPath == null) return base;
+  return mergeStorageState(base, JSON.parse(readFileSync(o.cookiesPath, "utf8")) as StorageStateLike);
 }
 
 async function openSession(o: CaptureOptions, deps: CaptureDeps, extra: Record<string, unknown> = {}): Promise<Session> {

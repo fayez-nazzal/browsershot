@@ -63,9 +63,11 @@ BROWSER
   Opens a headed Chromium window. With no argument it opens the saved baseUrl.
   Cookies, sign-ins, and localStorage persist in .browsershot/browser between
   runs. Close the window or press Ctrl-C to finish; the profile's cookies and
-  localStorage are then saved for captures, which stay headless and isolated
-  (--no-auth ignores them). The saved size sets the window viewport. A saved
-  authUser applies its authstate jar first.
+  localStorage are then saved to .browsershot/open-state.json. Later captures
+  start from its localStorage; its cookies apply only when the run requests
+  authentication. Captures stay headless and isolated (--no-auth ignores the
+  snapshot). The saved size sets the window viewport. A saved authUser applies
+  its authstate jar first.
 
 USAGE
   browsershot <url-or-path> [options]

@@ -41,6 +41,12 @@ export function readOpenState(path: string): StorageStateLike | null {
   }
 }
 
+// Cookies carry sign-ins, so they are seeded only when the run requests
+// authentication. App state (localStorage) is always seeded.
+export function withoutCookies(state: StorageStateLike): StorageStateLike {
+  return { origins: state.origins };
+}
+
 // `overlay` wins: cookies are keyed by name+domain+path, localStorage by
 // origin+name. Used with the open snapshot as base and the authstate jar as
 // overlay, so a refreshed login is never shadowed by a stale snapshot.

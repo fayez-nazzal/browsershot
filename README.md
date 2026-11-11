@@ -137,11 +137,15 @@ cookies, localStorage, and sign-ins to the profile as you go. Close the window
 or press Ctrl-C to finish.
 
 Closing also saves the profile's cookies and localStorage to
-`.browsershot/open-state.json`. Every later capture starts from that snapshot,
-so a theme or sign-in set by hand shows up in screenshots. Captures stay
-headless, isolated contexts and never touch the live profile; they see changes
-only after the window closes. `--no-auth` ignores the snapshot, and deleting the
-file resets it. IndexedDB is not part of the snapshot.
+`.browsershot/open-state.json`. Every later capture starts from that snapshot's
+localStorage, so a theme or other app setting made by hand shows up in
+screenshots. Cookies carry sign-ins, so a capture seeds them only when it
+requests authentication (`--auth`, `--auth-user`, or `--auth-credentials`);
+without one it starts signed out, which keeps routes such as `/sign-in` on the
+page they name. Captures stay headless, isolated contexts and never touch the
+live profile; they see changes only after the window closes. `--no-auth` ignores
+the snapshot entirely, and deleting the file resets it. IndexedDB is not part of
+the snapshot.
 
 With a saved `authUser`, `open` first applies that user's authstate jar, as a
 capture does; on a capture, the jar's values win over the snapshot. Each open writes the jar's cookies and localStorage values over

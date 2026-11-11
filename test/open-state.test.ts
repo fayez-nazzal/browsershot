@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { mergeStorageState, openStatePath, readOpenState, writeOpenState } from "../src/open-state.ts";
+import { mergeStorageState, openStatePath, readOpenState, withoutCookies, writeOpenState } from "../src/open-state.ts";
 
 const root = mkdtempSync(join(tmpdir(), "browsershot-open-state-"));
 
@@ -47,5 +47,13 @@ describe("open-window state", () => {
     const path = join(root, "corrupt.json");
     writeFileSync(path, "{nope");
     expect(() => readOpenState(path)).toThrow(path);
+  });
+
+  test("dropping cookie sign-ins keeps app state", () => {
+    const state = {
+      cookies: [cookie("session", "saved")],
+      origins: [{ origin: "https://app.test", localStorage: [{ name: "theme", value: "dark" }] }],
+    };
+    expect(withoutCookies(state)).toEqual({ origins: state.origins });
   });
 });

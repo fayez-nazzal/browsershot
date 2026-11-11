@@ -23,9 +23,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   and localStorage persist between runs. Closing the window or pressing Ctrl-C
   finishes the command with the profile flushed. Closing also saves the
   profile's cookies and localStorage to `.browsershot/open-state.json`, and
-  captures start from that snapshot, so a theme or sign-in set by hand shows up
-  in screenshots. Captures stay headless and isolated; `--no-auth` ignores the
-  snapshot, and the authstate jar wins over it.
+  captures start from that snapshot's localStorage, so a theme set by hand shows
+  up in screenshots. Cookies carry sign-ins, so a capture applies them only when
+  it requests authentication. Captures stay headless and isolated; `--no-auth`
+  ignores the snapshot, and the authstate jar wins over it.
   With a saved `authUser`, the authstate jar for that user is applied before the
   page loads, as captures do.
 - `--theme <name>` renders a theme. Library entries send the name through the plugin's `theme` template (built-in `storybook`: `globals=theme:<name>`). URL and page captures accept `light` or `dark`, which set `prefers-color-scheme`; other names are usage errors for them. A plugin without a `theme` template rejects `--theme` before the catalog is fetched.
@@ -35,6 +36,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   native desktop APIs or host capabilities.
 
 ### Fixed
+
+- Captures no longer apply the open-window snapshot's cookies unless the run
+  requests authentication, so a saved sign-in cannot silently redirect a quick
+  route such as `/sign-in` to the authenticated page. The snapshot's
+  localStorage (theme and app settings) still applies, and `--no-auth` still
+  ignores the snapshot entirely.
 
 - Full-page captures of internally scrolling layouts preserve document width when
   expansion introduces a vertical scrollbar, preventing content at the right edge

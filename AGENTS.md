@@ -125,9 +125,11 @@ Start it only when the user is present to sign in or change a setting. The
 command ends when the window closes or on Ctrl-C, and it writes progress to
 stderr only. It refuses to start while the profile in `.browsershot/browser/`
 is open in another window. Closing the window saves its cookies and
-localStorage to `.browsershot/open-state.json`, and later captures start from
-that snapshot (theme, sign-in); `--no-auth` ignores it. Captures never use the
-live profile.
+localStorage to `.browsershot/open-state.json`. Later captures start from that
+snapshot's localStorage (theme and app settings); its cookies, which carry
+sign-ins, apply only when the run requests authentication with `--auth`,
+`--auth-user`, or `--auth-credentials`. `--no-auth` ignores the snapshot
+entirely. Captures never use the live profile.
 With a saved `authUser`, it applies that user's authstate jar before the page
 loads, the same as a capture. It needs `authstate` on PATH and a
 `.testing-credentials.yaml` above the project.

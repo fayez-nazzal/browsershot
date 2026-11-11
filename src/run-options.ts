@@ -37,6 +37,7 @@ export interface ResolvedRunOptions {
   captured: CaptureIdentity;
   capture: CaptureRunOptions;
   // openState: seed the capture with the snapshot saved by `browsershot open`; false only for --no-auth.
+  // requested: the run asked for authentication, so the snapshot's cookies (sign-ins) apply as well.
   auth: { requested: boolean; openState: boolean; credentialsPath?: string; user?: string };
   outputPath: string;
   inspectJsonPath?: string;

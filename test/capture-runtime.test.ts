@@ -199,3 +199,32 @@ test("video capture refuses an implicit recording directory before browser launc
     .rejects.toThrow("temporary recording directory");
   expect(calls).toHaveLength(0);
 });
+
+test("the open-window snapshot seeds its cookies only for an authenticated capture", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "browsershot-open-state-runtime-"));
+  try {
+    const openStatePath = join(directory, "open-state.json");
+    const snapshot = {
+      cookies: [{ name: "session", value: "saved", domain: "example.test", path: "/" }],
+      origins: [{ origin: "https://example.test", localStorage: [{ name: "theme", value: "dark" }] }],
+    };
+    writeFileSync(openStatePath, JSON.stringify(snapshot));
+    const capturedStorageState = async (openStateAuth?: boolean) => {
+      let contextOptions: Record<string, unknown> | undefined;
+      const browser = {
+        newContext: async (options: Record<string, unknown>) => {
+          contextOptions = options;
+          return { newPage: async () => fakePage(), close: async () => {} };
+        },
+        close: async () => {},
+      } as unknown as Browser;
+      const { launchBrowser } = scriptedLauncher(browser, []);
+      await capture({ ...BASE_OPTIONS, openStatePath, openStateAuth }, { launchBrowser });
+      return contextOptions?.storageState;
+    };
+    expect(await capturedStorageState()).toEqual({ origins: snapshot.origins });
+    expect(await capturedStorageState(true)).toEqual(snapshot);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

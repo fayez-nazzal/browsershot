@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -451,6 +451,38 @@ document.write("<h1>" + navigator.platform + "</h1><p>" +
   const linuxSnapshot = JSON.parse(linuxHtml.stdout.toString()).html as string;
   expect(linuxSnapshot).toContain("Linux x86_64");
   expect(linuxSnapshot).toContain("Linux");
+}, 120000);
+
+test("an open-window sign-in cookie applies only when the run requests authentication", async () => {
+  const server = Bun.serve({
+    port: 0,
+    fetch: (request) => {
+      const signedIn = request.headers.get("cookie")?.includes("session=saved") === true;
+      const label = signedIn ? "signed in" : "signed out";
+      return new Response(
+        `<!doctype html><html><body><h1>${label}</h1><p>This fixture reports whether the request carried the snapshot cookie.</p></body></html>`,
+        { headers: { "content-type": "text/html" } },
+      );
+    },
+  });
+  try {
+    const dir = scratch();
+    mkdirSync(join(dir, ".browsershot"), { recursive: true });
+    writeFileSync(
+      join(dir, ".browsershot", "open-state.json"),
+      JSON.stringify({ cookies: [{ name: "session", value: "saved", domain: "127.0.0.1", path: "/" }], origins: [] }),
+    );
+    const proc = Bun.spawn(
+      ["bun", CLI, `http://127.0.0.1:${server.port}/`, "--html", "--json", "--no-auto-open"],
+      { cwd: dir, stdout: "pipe" },
+    );
+    const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+
+    expect(exitCode).toBe(0);
+    expect(JSON.parse(stdout).html).toContain("signed out");
+  } finally {
+    server.stop(true);
+  }
 }, 120000);
 
 test("platform flag rejects unknown values before capture", () => {
