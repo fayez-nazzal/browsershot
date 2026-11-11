@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "bun:test";
 import { parseActions, runActions } from "../src/act.ts";
+import { chromium } from "playwright";
 
 describe("parseActions", () => {
   it("reads a list of steps in order", () => {
@@ -62,6 +63,18 @@ describe("parseActions", () => {
 });
 
 describe("runActions", () => {
+  it("reloads the page after earlier actions", async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      await page.goto("data:text/html,<button onclick=\"this.textContent='changed'\">original</button>");
+      await runActions(page, parseActions("click:button;reload"), 5000);
+      expect(await page.locator("button").textContent()).toBe("original");
+    } finally {
+      await browser.close();
+    }
+  });
+
   it("hovers before clicking when actions are ordered that way", async () => {
     const events: string[] = [];
     const page = {

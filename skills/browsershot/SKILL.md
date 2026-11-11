@@ -40,7 +40,7 @@ more than pixels: `browsershot /pricing --element '#card' --html --json` returns
 a self-contained document in the `html` field. It cannot be combined with
 `--box`, `--marker`, `--inspect-note`, `--publish`, or `--full-page`.
 
-Use repeatable `--act` flags or semicolon-separated `kind:value` steps for clicks, typing, key presses, waits, hover states, `scroll:<CSS selector>`, and directional scrolls such as `scroll:down(500px)` or `scroll:right(25%)`. They form one ordered, serial action chain that starts after navigation load, render checks, configured delay, and readiness checks. Any scroll action automatically records WebM through the last action. Use `--inspect` for evidence after those actions:
+Use repeatable `--act` flags or semicolon-separated `kind:value` steps for clicks, typing, key presses, waits, hover states, `reload` (no value), `scroll:<CSS selector>`, and directional scrolls such as `scroll:down(500px)` or `scroll:right(25%)`. They form one ordered, serial action chain that starts after navigation load, render checks, configured delay, and readiness checks. Any scroll action automatically records WebM through the last action. Use `--inspect` for evidence after those actions:
 
 ```sh
 browsershot /dashboard --act 'click:#menu' \

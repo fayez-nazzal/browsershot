@@ -10,7 +10,7 @@ import type { ElementHandle, Page } from "playwright";
  * steps declarative and tiny so the shot stays reproducible from the command line alone.
  */
 
-export type ActionKind = "focus" | "click" | "hover" | "press" | "type" | "wait" | "scroll";
+export type ActionKind = "focus" | "click" | "hover" | "press" | "type" | "wait" | "scroll" | "reload";
 
 export interface Action {
   kind: ActionKind;
@@ -19,7 +19,7 @@ export interface Action {
 
 export type HoverElementHandle = ElementHandle<HTMLElement | SVGElement>;
 
-const KINDS: ActionKind[] = ["focus", "click", "hover", "press", "type", "wait", "scroll"];
+const KINDS: ActionKind[] = ["focus", "click", "hover", "press", "type", "wait", "scroll", "reload"];
 const STEP_SEPARATOR = ";";
 const DEFAULT_STEP_SETTLE_MS = 400;
 export const DEFAULT_SCROLL_SPEED = 1000;
@@ -60,6 +60,10 @@ export function parseActions(raw: string): Action[] {
   }
   const actions: Action[] = [];
   for (const step of steps) {
+    if (step === "reload") {
+      actions.push({ kind: "reload", value: "" });
+      continue;
+    }
     const at = step.indexOf(":");
     if (at < 1) {
       throw new Error(`--act step "${step}" needs a kind and a value, e.g. press:Enter`);
@@ -68,6 +72,9 @@ export function parseActions(raw: string): Action[] {
     const value = step.slice(at + 1).trim();
     if (!KINDS.includes(kind)) {
       throw new Error(`--act step "${step}" has an unknown kind; use one of ${KINDS.join(", ")}`);
+    }
+    if (kind === "reload") {
+      throw new Error(`--act reload takes no value`);
     }
     if (value.length === 0) {
       throw new Error(`--act step "${step}" needs a value after the colon`);
@@ -91,6 +98,10 @@ export async function runActions(
   let finalHoverTarget: HoverElementHandle | null = null;
   for (const [index, action] of actions.entries()) {
     onStep?.(`act: ${action.kind}:${action.value}`);
+    if ("reload" === action.kind) {
+      await page.reload({ waitUntil: "load", timeout: timeoutMs });
+      continue;
+    }
     if ("wait" === action.kind) {
       await page.waitForTimeout(Number(action.value));
       continue;

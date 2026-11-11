@@ -20,7 +20,7 @@ export interface NetworkRequestRecord {
   frame?: { url?: RedactedValue; name?: RedactedValue };
   resourceType: string;
   timing: { startedAtMs: number; endedAtMs?: number; durationMs?: number; startedAt: string; endedAt?: string };
-  response?: { status?: number; statusText?: RedactedValue; reference?: RedactedValue };
+  response?: { status?: number; statusText?: RedactedValue; reference?: RedactedValue; headers: Record<string, RedactedValue> };
   failure?: RedactedValue;
   deliverySource: "network" | "cache" | "service-worker" | "unknown";
   outcome: HttpOutcome;
@@ -116,7 +116,7 @@ export function createNetworkCollector(page: Page, categories: readonly NetworkC
       requests.set(request, record); add(category, record);
     } catch (error) { diagnostics.push({ kind: "collection", message: `request observation failed: ${(error as Error).message}` }); }
   };
-  const finish = (request: Request, outcome: HttpOutcome, response?: Response) => { if (finalized) return; const record = requests.get(request); if (!record) return; const end = Date.now(); record.outcome = outcome; record.timing.endedAtMs = end - started; record.timing.durationMs = record.timing.endedAtMs - record.timing.startedAtMs; record.timing.endedAt = nowIso(); if (response) { const state = { redacted: false, truncated: false }; record.response = { status: response.status(), statusText: redact(response.statusText(), false, state), reference: safeUrl(response.url(), state) }; record.deliverySource = resolveDeliverySource(response); record.redactionApplied = record.redactionApplied || state.redacted; } else if (outcome === "failed") record.failure = redact(request.failure()?.errorText ?? "unknown"); };
+  const finish = (request: Request, outcome: HttpOutcome, response?: Response) => { if (finalized) return; const record = requests.get(request); if (!record) return; const end = Date.now(); record.outcome = outcome; record.timing.endedAtMs = end - started; record.timing.durationMs = record.timing.endedAtMs - record.timing.startedAtMs; record.timing.endedAt = nowIso(); if (response) { const state = { redacted: false, truncated: false }; record.response = { status: response.status(), statusText: redact(response.statusText(), false, state), reference: safeUrl(response.url(), state), headers: headerRecord(response.headers(), state) }; record.deliverySource = resolveDeliverySource(response); record.redactionApplied = record.redactionApplied || state.redacted; if (state.truncated) record.truncated = true; } else if (outcome === "failed") record.failure = redact(request.failure()?.errorText ?? "unknown"); };
   if (enabled.has("resources") || enabled.has("api")) { page.on("request", onRequest); page.on("response", response => finish(response.request(), "completed", response)); page.on("requestfailed", request => finish(request, request.failure()?.errorText?.toLowerCase().includes("abort") ? "aborted" : "failed")); }
   if (enabled.has("websockets")) page.on("websocket", (socket: WebSocket) => {
     if (finalized) return;

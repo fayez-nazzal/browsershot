@@ -179,7 +179,7 @@ INTERACTION AND INSPECTION
                         configured delay, and readiness checks; each action
                         finishes before the next begins.
                         Kinds: focus, click, hover, press, type, wait (ms),
-                        scroll. Scroll accepts a CSS selector or a direction
+                        reload, scroll. Reload takes no value. Scroll accepts a CSS selector or a direction
                         with positive pixel or percentage distance:
                         scroll:#target;scroll:down(500px);scroll:right(25%)
                         Percentages use viewport height for up/down and width

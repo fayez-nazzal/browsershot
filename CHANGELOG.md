@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- Network observations include response headers with sensitive values redacted.
+- `--act reload` reloads the page during an action chain.
 - Quick routes support explicit hash-router paths such as `#/settings`, replacing
   the saved base URL's fragment route. Quote the route in shells so `#` is
   passed as an argument.

@@ -29,7 +29,7 @@ A quick path changes only URL resolution; every option behaves the same for a co
 
 Use flags when a capture needs more than a simple route:
 
-- `--act` supports `focus`, `click`, `hover`, `press`, `type`, `wait` (milliseconds), and `scroll` with a CSS selector or `up|down|left|right` plus a positive `px` or `%` distance.
+- `--act` supports `focus`, `click`, `hover`, `press`, `type`, `wait` (milliseconds), `reload` (no value), and `scroll` with a CSS selector or `up|down|left|right` plus a positive `px` or `%` distance.
   Directional percentages use viewport height for up/down and width for left/right.
 - `--inspect` checks an element and writes a JSON sidecar. Use
   `--inspect-attr` to check a specific attribute, such as `aria-expanded`.
