@@ -70,7 +70,7 @@ Actions, checks, and inspection fit in one invocation:
 browsershot /dashboard --act 'click:#menu' --inspect '#menu' --json
 ```
 
-See `README.md` for the complete flag list.
+See `docs/guide.md` for the detailed reference, or run `browsershot --help` for the flag list.
 
 The default path is
 `.browsershot/captures/{host}/{route}_{timestamp}.png`, plus a `_q-{query}`

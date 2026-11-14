@@ -126,4 +126,4 @@ identity for PNG, HTML, and video captures. This sets the user agent and
 platform client hints only; it does not provide native desktop APIs or host
 capabilities.
 
-See the repository [`README.md`](../../README.md) for uncommon flags and publishing details.
+See the repository [guide](../../docs/guide.md) for uncommon flags and publishing details.
